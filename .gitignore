@@ -1,0 +1,9 @@
+/models
+/data
+*.csv
+*.pkl
+*.log
+.idea
+.vscode
+*.pyc
+/notebook/.ipynb_checkpoints
