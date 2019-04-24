@@ -170,9 +170,9 @@ def load_checkpoint(_model,
 trn_trnsfms = transforms.Compose([
     transforms.Resize(IMG_SIZE),
     #transforms.RandomHorizontalFlip(),
-    transforms.RandomAffine(degrees=(-30,30), shear=(-30,30)),
-    transforms.ColorJitter(brightness=0.5, contrast=0.5),
-    transforms.RandomGrayscale(p=0.2),
+    # transforms.RandomAffine(degrees=(-30,30), shear=(-30,30)),
+    # transforms.ColorJitter(brightness=0.5, contrast=0.5),
+    # transforms.RandomGrayscale(p=0.2),
     transforms.ToTensor(),
     transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
@@ -421,7 +421,7 @@ def accuracy(output, target, topk=(1,)):
     """Computes the precision@k for the specified values of k"""
     maxk = max(topk)
     batch_size = target.size(0)
-
+    
     _, pred = output.topk(maxk, 1, True, True)
     pred = pred.t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
@@ -431,6 +431,18 @@ def accuracy(output, target, topk=(1,)):
         correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
+
+'''
+a = torch.Tensor([
+    [0.1, 0.3, 0.2],
+    [0.2, 0.4, 0.5],
+    [2, 3, 4],
+    [3, 1, 6]
+])
+print(a.size())
+label = torch.Tensor([1, 1, 1, 1]).long()
+accuracy(a, label, topk=(1, 2))
+'''
 
 """## train_valid"""
 
@@ -472,7 +484,7 @@ def train(epoch,
         
         # print
         if i % PRINT_FREQ == 0:
-            print('loss: %f top1: %f top5: %f' % (loss_meter.avg, top1.avg, top5.avg))
+            get_logger().info('i: %d loss: %f top1: %f top5: %f' % (i, loss_meter.avg, top1.avg, top5.avg))
     get_logger().info(
         "Epoch %d/%d train loss %f" % (epoch, EPOCHS, loss_meter.avg))
 
@@ -616,10 +628,10 @@ def predict_label(model, metric_fc, test_dataset, label_encoder):
 
 """## main"""
 
-BATCH_SIZE_TRAIN = 100
+BATCH_SIZE_TRAIN = 150
 NUM_WORKERS = 8
 EPOCHS = 10
-PRINT_FREQ = 10
+PRINT_FREQ = 100
 
 """### train"""
 
@@ -631,6 +643,10 @@ label_encoder = init_le(df_train)
 joblib.dump(label_encoder, 'le.pkl')
 
 df_train = get_exist_image(df_train, TRAIN_IMG_PATH)
+id_count = df_train['landmark_id'].value_counts()
+s_count = df_train['landmark_id'].map(id_count)
+df_train = df_train[s_count > 1]
+print('more than 1 landmark_id: %d, images: %d' % ((id_count > 1).sum(), df_train.shape[0]))
 
 train_dataset = LandmarkDataset(TRAIN_IMG_PATH, df_train, 
                                 trn_trnsfms, is_train=True, le=label_encoder)
@@ -641,9 +657,6 @@ train_loader = DataLoader(train_dataset,
                           drop_last=True,
                           shuffle=True
                          )
-
-counting = train_dataset.df['landmark_id'].value_counts()
-(counting > 1).sum()
 
 train_dataset.df.shape
 
@@ -658,7 +671,7 @@ criterion = nn.CrossEntropyLoss()
 
 #optimizer = optim.Adam(model.parameters(), lr=1e-4)
 optimizer = optim.SGD([{'params':model.parameters()}, {'params': metric_fc.parameters()}], 
-                      lr=5e-3, momentum=0.9, weight_decay=1e-4)
+                      lr=1e-3, momentum=0.9, weight_decay=1e-4)
 scheduler_step = EPOCHS
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, scheduler_step, eta_min=1e-4)
 
@@ -668,6 +681,14 @@ for epoch in range(start_epoch+1, EPOCHS+1):
     scheduler.step()
     
     epoch_loss = train(epoch, model, train_loader, metric_fc, criterion, optimizer)
+    
+    save_checkpoint({
+        'epoch': epoch,
+        'state_dict': model.state_dict(),
+        'metric_fc': metric_fc.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'scheduler': scheduler.state_dict()
+    }, True)
 
 save_checkpoint({
     'epoch': epoch,
