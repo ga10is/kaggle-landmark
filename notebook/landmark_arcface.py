@@ -21,6 +21,7 @@ from tqdm import tqdm
 import joblib
 
 IMG_SIZE = (256, 256)
+INPUT_SIZE = (224, 224)
 INPUT = 'analysis/landmark/data/raw/'
 INDEX_PATH = INPUT + 'index.csv'
 TRAIN_PATH = INPUT + 'train.csv'
@@ -183,10 +184,8 @@ def load_checkpoint(_model,
 
 trn_trnsfms = transforms.Compose([
     transforms.Resize(IMG_SIZE),
-    #transforms.RandomHorizontalFlip(),
-    # transforms.RandomAffine(degrees=(-30,30), shear=(-30,30)),
-    # transforms.ColorJitter(brightness=0.5, contrast=0.5),
-    # transforms.RandomGrayscale(p=0.2),
+    transforms.RandomCrop(INPUT_SIZE),
+    transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
@@ -196,6 +195,7 @@ trn_trnsfms = transforms.Compose([
 
 tst_trnsfms = transforms.Compose([
     transforms.Resize(IMG_SIZE),
+    transforms.CenterCrop(INPUT_SIZE),
     transforms.ToTensor(),
     transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
@@ -206,12 +206,14 @@ tst_trnsfms = transforms.Compose([
 class ResNet(nn.Module):
     def __init__(self, output_neurons, n_classes, dropout_rate):
         super(ResNet, self).__init__()
-        self.resnet = torchvision.models.resnet34(pretrained=True)        
-        #self.resnet = torchvision.models.resnet18(pretrained=True)
-        self.norm1 = nn.BatchNorm1d(512)
+        self.resnet = torchvision.models.resnet50(pretrained=True)        
+        # self.resnet = torchvision.models.resnet34(pretrained=True)        
+        # self.resnet = torchvision.models.resnet18(pretrained=True)
+        n_out_channels = 512 * 4  # resnet18, 34: 512, resnet50: 512*4
+        self.norm1 = nn.BatchNorm1d(n_out_channels)
         self.drop1 = nn.Dropout(dropout_rate)
-        # FC
-        self.fc = nn.Linear(512, output_neurons)
+        # FC        
+        self.fc = nn.Linear(n_out_channels, output_neurons)
         self.norm2 = nn.BatchNorm1d(output_neurons)
         
     def forward(self, x):
@@ -312,7 +314,8 @@ class ArcMarginProduct(nn.Module):
         #print(output[0])
 
         return output
-    
+
+
 class FocalBinaryLoss(nn.Module):
     def __init__(self, gamma=0):
         super(FocalBinaryLoss, self).__init__()
@@ -483,7 +486,11 @@ def train(epoch,
         with torch.set_grad_enabled(True):
             # forward                      
             emb_vec = model(img)
-            logit = metric_fc(emb_vec, label)
+            if isinstance(metric_fc, ArcMarginProduct):
+                # ArcMarginProduct needs label when training
+                logit = metric_fc(emb_vec, label)
+            else:
+                logit = metric_fc(emb_vec)
             loss = criterion(logit, label.squeeze())
 
             # backward
@@ -501,9 +508,7 @@ def train(epoch,
             get_logger().info('i: %d loss: %f top1: %f top5: %f' % (i, loss_meter.avg, top1.avg, top5.avg))
     get_logger().info(
         "Epoch %d/%d train loss %f" % (epoch, EPOCHS, loss_meter.avg))
-
-    # update pairs of image
-    get_logger().info('Finished updating dataset')
+    
     return loss_meter.avg
 
 
@@ -511,21 +516,33 @@ from sklearn.metrics import accuracy_score
 
 def validate_arcface(model,
                      metric_fc,
-                     loader
-                    ):
+                     loader):
+    loss_meter = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
+    
     # validate phase
-    model.eval()    
-    with torch.no_grad():
-        proba, label = predict_proba(model, metric_fc, loader)
-        # TTA
+    model.eval()
+    for i, data in enumerate(tqdm(loader)):
+        img, label = data
+        img, label = img.cuda(), label.cuda().long()  
+        with torch.no_grad():
+            # forward                      
+            emb_vec = model(img)
+            logit = metric_fc(emb_vec)
+            loss = criterion(logit, label.squeeze())          
+            
+        # measure accuracy
+        prec1, prec5 = accuracy(logit.detach(), label, topk=(1, 5))
+        loss_meter.update(loss.item(), img.size(0))
+        top1.update(prec1[0], img.size(0))
+        top5.update(prec5[0], img.size(0))
+        
+        # print
+        if i % PRINT_FREQ == 0:
+            get_logger().info('i: %d loss: %f top1: %f top5: %f' % (i, loss_meter.avg, top1.avg, top5.avg))
+
         '''
-        n_predict = 1
-        for i in range(n_predict-1):
-            output2, _ = predict_proba(model, metric_fc, unknown_loader)
-            print(output2[:5, :5])
-            output += output2
-        uk_output /= n_predict
-        '''        
         # calculate accuracy
         max_proba = np.max(proba, axis=1)
         max_proba_idx = np.argmax(proba, axis=1)
@@ -533,8 +550,11 @@ def validate_arcface(model,
         # calculate GAP
         gap = GAP_vector(max_proba_idx, max_proba, label.squeeze())
         get_logger().info("validate score: acc %f gap %f" % (acc, gap))
-
-    return acc
+        '''
+        
+    get_logger().info("valid loss %f" % (loss_meter.avg))
+    
+    return top1.avg
 
 def predict_proba(model, metric_fc, loader):
     """
@@ -642,9 +662,9 @@ def predict_label(model, metric_fc, test_dataset, label_encoder):
 
 """## main"""
 
-BATCH_SIZE_TRAIN = 150
+BATCH_SIZE_TRAIN = 100
 NUM_WORKERS = 8
-EPOCHS = 10
+EPOCHS = 12
 PRINT_FREQ = 100
 latent_dim = 512
 get_logger().info('batch size: %d' % BATCH_SIZE_TRAIN)
@@ -670,7 +690,7 @@ df_train = df_train[s_count > 1]
 print('more than 1 landmark_id: %d, images: %d' % ((id_count > 1).sum(), df_train.shape[0]))
 
 # train validate split
-df_trn, df_val = split_train_valid(df_train, label_encoder.transform(df_train['landmark_id'].values), 30)
+df_trn, df_val = split_train_valid(df_train, label_encoder.transform(df_train['landmark_id'].values), 10)
 get_logger().info('train num: %d, valid num: %d' % (len(df_trn), len(df_val)))
 
 # initialize Dataset and DataLoader
@@ -696,34 +716,55 @@ valid_loader = DataLoader(valid_dataset,
 train_dataset.df.shape
 
 n_classes = len(label_encoder.classes_)
+# Model
 #model = DenseNet(output_neurons=latent_dim, n_classes=len(le.classes_),  dropout_rate=0.5).cuda()    
 model = ResNet(output_neurons=latent_dim, n_classes=n_classes, dropout_rate=0.5).cuda()    
-metric_fc = ArcMarginProduct(latent_dim, n_classes, s=60, m=0.5, easy_margin=False).cuda()
+
+# Last Layer
+# metric_fc = ArcMarginProduct(latent_dim, n_classes, s=60, m=0.5, easy_margin=False).cuda()
+metric_fc = nn.Linear(latent_dim, n_classes).cuda()
+
+# Loss function
 criterion = nn.CrossEntropyLoss()
 # criterion = FocalLoss(gamma=2)
 
-#optimizer = optim.Adam(model.parameters(), lr=1e-4)
-optimizer = optim.SGD([{'params':model.parameters()}, {'params': metric_fc.parameters()}], 
-                      lr=1e-3, momentum=0.9, weight_decay=1e-4)
-scheduler_step = EPOCHS
-scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, scheduler_step, eta_min=1e-4)
+# Optimizer
+optimizer = optim.Adam([{'params':model.parameters()}, {'params': metric_fc.parameters()}], lr=1e-4)
+# optimizer = optim.SGD([{'params':model.parameters()}, {'params': metric_fc.parameters()}], 
+#                       lr=1e-3, momentum=0.9, weight_decay=1e-4)
 
-start_epoch = 0
+# Scheduler
+mile_stones = [5, 7, 9, 10, 11, 12]
+scheduler = optim.lr_scheduler.MultiStepLR(optimizer, mile_stones, gamma=0.5, last_epoch=-1)
+# scheduler_step = EPOCHS
+# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, scheduler_step, eta_min=1e-4)
+
+# create model object before following statement
+start_epoch, model, metric_fc, optimizer, scheduler = load_checkpoint(model, 
+                                                                      metric_fc,
+                                                                      optimizer,
+                                                                      scheduler, 
+                                                                      'best_model.pth')
+
+# start_epoch = 0
+best_score = 0
 
 for epoch in range(start_epoch+1, EPOCHS+1):
     scheduler.step()
     
     epoch_loss = train(epoch, model, train_loader, metric_fc, criterion, optimizer)
     
-    validate_arcface(model, metric_fc, valid_loader)
+    valid_score = validate_arcface(model, metric_fc, valid_loader)
     
+    is_best = valid_score > best_score
+    print('best score (%f) at epoch (%d)' % (valid_score, epoch))
     save_checkpoint({
         'epoch': epoch,
         'state_dict': model.state_dict(),
         'metric_fc': metric_fc.state_dict(),
         'optimizer': optimizer.state_dict(),
         'scheduler': scheduler.state_dict()
-    }, True)
+    }, is_best)
 
 """### prediction"""
 
@@ -733,29 +774,40 @@ df_test_all.head()
 df_test = get_exist_image(df_test_all, TEST_IMG_PATH)
 
 test_dataset = LandmarkDataset(TEST_IMG_PATH, df_test, tst_trnsfms, is_train=False)
-label_encoder = joblib.load('analysis/landmark/models/20190423/le.pkl')
+label_encoder = joblib.load('analysis/landmark/models/20190427/le.pkl')
 
 len(label_encoder.classes_)
 
 n_classes = len(label_encoder.classes_)
+# Model
 #model = DenseNet(output_neurons=latent_dim, n_classes=len(le.classes_),  dropout_rate=0.5).cuda()    
 model = ResNet(output_neurons=latent_dim, n_classes=n_classes, dropout_rate=0.5).cuda()    
-metric_fc = ArcMarginProduct(latent_dim, n_classes, s=60, m=0.5, easy_margin=False).cuda()
+
+# Last Layer
+# metric_fc = ArcMarginProduct(latent_dim, n_classes, s=60, m=0.5, easy_margin=False).cuda()
+metric_fc = nn.Linear(latent_dim, n_classes).cuda()
+
+# Loss function
 criterion = nn.CrossEntropyLoss()
 # criterion = FocalLoss(gamma=2)
 
-#optimizer = optim.Adam(model.parameters(), lr=1e-4)
-optimizer = optim.SGD([{'params':model.parameters()}, {'params': metric_fc.parameters()}], 
-                      lr=1e-3, momentum=0.9, weight_decay=1e-4)
-scheduler_step = 200
-scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, scheduler_step, eta_min=1e-4)
+# Optimizer
+optimizer = optim.Adam([{'params':model.parameters()}, {'params': metric_fc.parameters()}], lr=1e-4)
+# optimizer = optim.SGD([{'params':model.parameters()}, {'params': metric_fc.parameters()}], 
+#                       lr=1e-3, momentum=0.9, weight_decay=1e-4)
+
+# Scheduler
+mile_stones = [5, 7, 9, 10, 11, 12]
+scheduler = optim.lr_scheduler.MultiStepLR(optimizer, mile_stones, gamma=0.5, last_epoch=-1)
+# scheduler_step = EPOCHS
+# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, scheduler_step, eta_min=1e-4)
 
 # create model object before following statement
 start_epoch, model, metric_fc, optimizer, scheduler = load_checkpoint(model, 
                                                                       metric_fc,
                                                                       optimizer,
                                                                       scheduler, 
-                                                                      'analysis/landmark/models/20190423/best_model.pth')
+                                                                      'analysis/landmark/models/20190427/best_model.pth')
 
 predict_label(model, metric_fc, test_dataset, label_encoder)
 
@@ -769,10 +821,6 @@ df_sub.head()
 df_sub_sample = pd.read_csv(SUBMIT_PATH, dtype={'id': 'object'})
 del df_sub_sample['landmarks']
 df_sub_sample.head()
-
-df_sub_sample.head(50)
-
-df_test_all.head()
 
 df_sub2 = df_sub_sample.merge(df_sub, how='left', on='id')[['id', 'landmarks']]
 df_sub2.shape
