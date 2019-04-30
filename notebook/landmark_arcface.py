@@ -88,8 +88,9 @@ def get_exist_image(_df, _image_folder):
     """
     create dataframe of exist images in folder
     """
-    exist_images = get_image_ids(_image_folder)
+    exist_images = set(get_image_ids(_image_folder))
     df_exist = _df[_df['id'].isin(exist_images)]
+    print(len(exist_images))
     print('exist images: %d' % len(df_exist))
     return df_exist
 
@@ -660,6 +661,55 @@ def predict_label(model, metric_fc, test_dataset, label_encoder):
         
     get_logger().info("created submission file")
 
+def predict_label2(model, metric_fc, test_dataset, label_encoder):
+    
+    pred_indices = []
+    pred_scores = []
+    pred_confs = []
+    
+    loader = DataLoader(test_dataset,
+                          batch_size=BATCH_SIZE_TRAIN,
+                          num_workers=NUM_WORKERS,
+                          pin_memory=True,
+                          drop_last=False,
+                          shuffle=False
+                         )
+    
+    softmax = torch.nn.Softmax(dim=1).cuda()
+    model.eval()
+    for i, data in enumerate(tqdm(loader)):
+        img, _ = data
+        img = img.cuda()
+        with torch.no_grad():
+            # forward
+            emb_vec = model(img)
+            logit = metric_fc(emb_vec)
+            
+            # from IPython.core.debugger import Pdb; Pdb().set_trace()
+            top_scores, top_indices = torch.topk(logit, k=20)
+            top_indices = top_indices.detach().cpu().numpy()
+            top_scores = top_scores.detach().cpu().numpy()
+
+            confs = softmax(logit)
+            top_confs, _ = torch.topk(confs, k=20)
+            top_confs = top_confs.detach().cpu().numpy()
+
+            pred_indices.append(top_indices)
+            pred_scores.append(top_scores)
+            pred_confs.append(top_confs)
+        
+    pred_indices = np.concatenate(pred_indices)
+    pred_scores = np.concatenate(pred_scores)
+    pred_confs = np.concatenate(pred_confs)
+    
+    # make df    
+    labels = label_encoder.inverse_transform(pred_indices[:, 0])
+    df_submit = make_df(loader.dataset.df, labels, pred_confs[:, 0])
+    
+    # write result
+    submit_file = 'submit_landmark.csv'
+    df_submit.to_csv(submit_file, index=False)
+
 """## main"""
 
 BATCH_SIZE_TRAIN = 100
@@ -809,7 +859,7 @@ start_epoch, model, metric_fc, optimizer, scheduler = load_checkpoint(model,
                                                                       scheduler, 
                                                                       'analysis/landmark/models/20190427/best_model.pth')
 
-predict_label(model, metric_fc, test_dataset, label_encoder)
+predict_label2(model, metric_fc, test_dataset, label_encoder)
 
 df_sub = pd.read_csv('submit_landmark.csv', dtype={'id': 'object'})
 df_sub.shape
