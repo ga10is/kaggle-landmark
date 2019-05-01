@@ -1,0 +1,120 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision
+import torchvision.transforms as transforms
+
+from .. import config
+# import matplotlib.pyplot as plt
+# import numpy as np
+
+
+"""
+def imshow(img):
+    # print(type(img))
+    img = img * 0.23 + 0.5     # unnormalize
+    npimg = img.numpy()
+    # print(npimg.shape)
+    plt.imshow(np.transpose(npimg, (1, 2, 0)))
+"""
+
+
+def save_checkpoint(state, is_best, fpath='checkpoint.pth'):
+    torch.save(state, fpath)
+    if is_best:
+        torch.save(state, 'best_model.pth')
+
+
+def load_checkpoint(_model,
+                    _metric_fc,
+                    _optimizer,
+                    _scheduler,
+                    fpath):
+    checkpoint = torch.load(fpath)
+    _epoch = checkpoint['epoch']
+    _model.load_state_dict(checkpoint['state_dict'])
+    _metric_fc.load_state_dict(checkpoint['metric_fc'])
+    _optimizer.load_state_dict(checkpoint['optimizer'])
+    _scheduler.load_state_dict(checkpoint['scheduler'])
+
+    return _epoch, _model, _metric_fc, _optimizer, _scheduler
+
+
+trn_trnsfms = transforms.Compose([
+    transforms.Resize(config.IMG_SIZE),
+    transforms.RandomCrop(config.INPUT_SIZE),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
+])
+
+tst_trnsfms = transforms.Compose([
+    transforms.Resize(config.IMG_SIZE),
+    transforms.CenterCrop(config.INPUT_SIZE),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
+])
+
+
+class ResNet(nn.Module):
+    def __init__(self, output_neurons, n_classes, dropout_rate):
+        super(ResNet, self).__init__()
+        self.resnet = torchvision.models.resnet50(pretrained=True)
+        # self.resnet = torchvision.models.resnet34(pretrained=True)
+        # self.resnet = torchvision.models.resnet18(pretrained=True)
+        n_out_channels = 512 * 4  # resnet18, 34: 512, resnet50: 512*4
+        self.norm1 = nn.BatchNorm1d(n_out_channels)
+        self.drop1 = nn.Dropout(dropout_rate)
+        # FC
+        self.fc = nn.Linear(n_out_channels, output_neurons)
+        self.norm2 = nn.BatchNorm1d(output_neurons)
+
+    def forward(self, x):
+        x = self.resnet.conv1(x)
+        x = self.resnet.bn1(x)
+        x = self.resnet.relu(x)
+        x = self.resnet.maxpool(x)
+
+        x = self.resnet.layer1(x)
+        x = self.resnet.layer2(x)
+        x = self.resnet.layer3(x)
+        x = self.resnet.layer4(x)
+        # GAP
+        x = F.adaptive_avg_pool2d(x, (1, 1))
+        x = x.view(x.size(0), -1)
+        x = self.norm1(x)
+        x = self.drop1(x)
+        # FC
+        x = self.fc(x)
+        x = self.norm2(x)
+        # x = l2_norm(x)
+        return x
+
+
+class DenseNet(nn.Module):
+    def __init__(self, output_neurons, n_classes, dropout_rate):
+        super(DenseNet, self).__init__()
+        self.densenet_features = torchvision.models.densenet121(
+            pretrained=True).features
+        self.norm1 = nn.BatchNorm1d(1024)
+        self.drop1 = nn.Dropout(dropout_rate)
+        self.fc = nn.Linear(1024, output_neurons)
+        self.norm2 = nn.BatchNorm1d(output_neurons)
+
+    def forward(self, x):
+        features = self.densenet_features(x)
+        x = F.relu(features, inplace=True)
+        # GAP
+        x = F.adaptive_avg_pool2d(x, (1, 1)).view(features.size(0), -1)
+        x = self.norm1(x)
+        x = self.drop1(x)
+        # FC
+        x = self.fc(x)
+        x = self.norm2(x)
+        return x

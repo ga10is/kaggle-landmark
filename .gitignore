@@ -7,4 +7,4 @@
 .vscode
 *.pyc
 /notebook/.ipynb_checkpoints
-/src/ref
+/ref
