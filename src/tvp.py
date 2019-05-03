@@ -9,7 +9,6 @@ from .common.util import debug_trace
 from .model.metrics import AverageMeter, accuracy
 from .model.loss import ArcMarginProduct
 from .common.logger import get_logger
-from .dataset import LandmarkDataset
 
 
 @debug_trace
@@ -27,13 +26,14 @@ def train(epoch,
     get_logger().info('lr: %f' %
                       optimizer.state_dict()['param_groups'][0]['lr'])
 
+    softmax = torch.nn.Softmax(dim=1).cuda()
     # train phase
     model.train()
     for i, data in enumerate(tqdm(loader)):
         img, label = data
         img, label = img.cuda(), label.cuda().long()
         # label = label.squeeze() # (batch_size, 1) -> (batch_size,)
-        optimizer.zero_grad()
+        # optimizer.zero_grad()
         with torch.set_grad_enabled(True):
             # forward
             emb_vec = model(img)
@@ -44,22 +44,28 @@ def train(epoch,
                 logit = metric_fc(emb_vec)
             loss = criterion(logit, label.squeeze())
 
+            # measure accuracy
+            prec1, prec5 = accuracy(logit.detach(), label, topk=(1, 5))
+            loss_meter.update(loss.item(), img.size(0))
+            top1.update(prec1.item(), img.size(0))
+            top5.update(prec5.item(), img.size(0))
+
             # backward
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-        # measure accuracy
-        prec1, prec5 = accuracy(logit.detach(), label, topk=(1, 5))
-        loss_meter.update(loss.item(), img.size(0))
-        top1.update(prec1[0], img.size(0))
-        top5.update(prec5[0], img.size(0))
-
         # print
         if i % config.PRINT_FREQ == 0:
-            get_logger().info('i: %d loss: %f top1: %f top5: %f' %
+            softmaxed = softmax(logit.detach().cpu())
+            get_logger().info(torch.max(softmaxed[0]).item())
+            get_logger().info(softmaxed[0, 0:10])
+            get_logger().info('train: %d loss: %f top1: %f top5: %f (just now)' %
+                              (i, loss_meter.val, top1.val, top5.val))
+            get_logger().info('train: %d loss: %f top1: %f top5: %f' %
                               (i, loss_meter.avg, top1.avg, top5.avg))
     get_logger().info(
-        "Epoch %d/%d train loss %f" % (epoch, config.EPOCHS, loss_meter.avg))
+        "Epoch %d/%d train loss %f top1 %f top5 %f" % (epoch, config.EPOCHS, loss_meter.avg, top1.avg, top5.avg))
 
     return loss_meter.avg
 
@@ -67,7 +73,6 @@ def train(epoch,
 def validate_arcface(model,
                      metric_fc,
                      loader):
-    loss_meter = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
 
@@ -80,18 +85,18 @@ def validate_arcface(model,
             # forward
             emb_vec = model(img)
             logit = metric_fc(emb_vec)
-            # loss = criterion(logit, label.squeeze())
 
         # measure accuracy
         prec1, prec5 = accuracy(logit.detach(), label, topk=(1, 5))
-        # loss_meter.update(loss.item(), img.size(0))
-        top1.update(prec1[0], img.size(0))
-        top5.update(prec5[0], img.size(0))
+        top1.update(prec1.item(), img.size(0))
+        top5.update(prec5.item(), img.size(0))
 
         # print
         if i % config.PRINT_FREQ == 0:
-            get_logger().info('i: %d loss: %f top1: %f top5: %f' %
-                              (i, loss_meter.avg, top1.avg, top5.avg))
+            get_logger().info('valid: %d top1: %f top5: %f (just now)' %
+                              (i, top1.val, top5.val))
+            get_logger().info('valid: %d top1: %f top5: %f' %
+                              (i, top1.avg, top5.avg))
 
         '''
         # calculate accuracy
@@ -103,61 +108,9 @@ def validate_arcface(model,
         get_logger().info("validate score: acc %f gap %f" % (acc, gap))
         '''
 
-    get_logger().info("valid loss %f" % (loss_meter.avg))
+    get_logger().info("valid top1 %f top5 %f" % (top1.avg, top5.avg))
 
     return top1.avg
-
-
-def predict_proba(model, metric_fc, loader):
-    """
-    return numpy.ndarray of probability for each class
-    """
-    outputs = []
-    labels = []
-    for data in tqdm(loader):
-        model.eval()
-        with torch.no_grad():
-            img, label = data
-            img = img.cuda()
-            output = metric_fc(model(img))
-            outputs.append(output.detach().cpu().numpy())
-            labels.append(label.numpy())
-    outputs = np.concatenate(outputs)
-    labels = np.concatenate(labels)
-    return outputs, labels
-
-
-def split_dataset(dataset, steps):
-    """
-    split Dataset by steps and create DataLoader.
-    Parameters
-    dataset: torch.utils.data.Dataset
-    steps: int
-        the number of each dataset 
-    Returns
-    list of torch.utils.data.DataLoader
-    """
-    # from IPython.core.debugger import Pdb; Pdb().set_trace()
-    _df = dataset.df
-    n = _df.shape[0]
-    loader_list = []
-
-    split_indexes = np.array_split(np.arange(n), steps)
-    for split_index in split_indexes:
-        split_df = _df.iloc[split_index]
-        split_dataset = LandmarkDataset(dataset.image_folder,
-                                        split_df,
-                                        dataset.transform,
-                                        is_train=False)
-        split_loader = DataLoader(split_dataset,
-                                  batch_size=config.BATCH_SIZE_TRAIN,
-                                  num_workers=config.NUM_WORKERS,
-                                  pin_memory=True,
-                                  drop_last=False,
-                                  shuffle=False
-                                  )
-        loader_list.append(split_loader)
-    return loader_list
 
 
 def make_df(df_org, labels, confidences):
@@ -181,34 +134,6 @@ def make_df(df_org, labels, confidences):
     new_df['landmarks'] = new_df['label'] + ' ' + new_df['confidence']
     del new_df['label'], new_df['confidence']
     return new_df
-
-
-def predict_label(model, metric_fc, test_dataset, label_encoder):
-    submit_file = 'submit_landmark.csv'
-
-    # split df in test_dataset and make loader
-    loaders = split_dataset(test_dataset, 10)
-
-    # write the header of a submission table
-    df_header = pd.DataFrame(columns=['id', 'landmarks'])
-    df_header.to_csv(submit_file, index=False)
-
-    # prediction phase
-    for i, loader in enumerate(loaders):
-        get_logger().info('prediction %d / %d' % (i + 1, len(loaders)))
-        model.eval()
-        with torch.no_grad():
-            proba, _ = predict_proba(model, metric_fc, loaders[i])
-            max_proba = np.max(proba, axis=1)
-            max_proba_idx = np.argmax(proba, axis=1)
-            labels = label_encoder.inverse_transform(max_proba_idx)
-
-            df_submit = make_df(loader.dataset.df, labels, max_proba)
-
-        # write result in appending mode
-        df_submit.to_csv(submit_file, index=False, header=False, mode='a')
-
-    get_logger().info("created submission file")
 
 
 def predict_label2(model, metric_fc, test_dataset, label_encoder):

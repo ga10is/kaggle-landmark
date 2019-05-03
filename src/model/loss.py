@@ -65,8 +65,8 @@ class FocalBinaryLoss(nn.Module):
 
     def forward(self, input, target):
         p = torch.sigmoid(input)
-        loss = torch.mean(-1 * target * torch.pow(1-p, self.gamma) * torch.log(p + 1e-10) +
-                          -1 * (1-target) * torch.pow(p, self.gamma) * torch.log(1-p + 1e-10)) * 4
+        loss = torch.mean(-1 * target * torch.pow(1 - p, self.gamma) * torch.log(p + 1e-10) +
+                          -1 * (1 - target) * torch.pow(p, self.gamma) * torch.log(1 - p + 1e-10)) * 4
         return loss
 
 

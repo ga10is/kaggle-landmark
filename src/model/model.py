@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
@@ -17,27 +16,6 @@ def imshow(img):
     # print(npimg.shape)
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
 """
-
-
-def save_checkpoint(state, is_best, fpath='checkpoint.pth'):
-    torch.save(state, fpath)
-    if is_best:
-        torch.save(state, 'best_model.pth')
-
-
-def load_checkpoint(_model,
-                    _metric_fc,
-                    _optimizer,
-                    _scheduler,
-                    fpath):
-    checkpoint = torch.load(fpath)
-    _epoch = checkpoint['epoch']
-    _model.load_state_dict(checkpoint['state_dict'])
-    _metric_fc.load_state_dict(checkpoint['metric_fc'])
-    _optimizer.load_state_dict(checkpoint['optimizer'])
-    _scheduler.load_state_dict(checkpoint['scheduler'])
-
-    return _epoch, _model, _metric_fc, _optimizer, _scheduler
 
 
 trn_trnsfms = transforms.Compose([
@@ -65,10 +43,10 @@ tst_trnsfms = transforms.Compose([
 class ResNet(nn.Module):
     def __init__(self, output_neurons, n_classes, dropout_rate):
         super(ResNet, self).__init__()
-        self.resnet = torchvision.models.resnet50(pretrained=True)
+        # self.resnet = torchvision.models.resnet50(pretrained=True)
         # self.resnet = torchvision.models.resnet34(pretrained=True)
-        # self.resnet = torchvision.models.resnet18(pretrained=True)
-        n_out_channels = 512 * 4  # resnet18, 34: 512, resnet50: 512*4
+        self.resnet = torchvision.models.resnet18(pretrained=True)
+        n_out_channels = 512  # resnet18, 34: 512, resnet50: 512*4
         self.norm1 = nn.BatchNorm1d(n_out_channels)
         self.drop1 = nn.Dropout(dropout_rate)
         # FC

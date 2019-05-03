@@ -8,3 +8,4 @@
 *.pyc
 /notebook/.ipynb_checkpoints
 /ref
+/log

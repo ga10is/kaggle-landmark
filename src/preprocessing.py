@@ -4,6 +4,8 @@ from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor
 from sklearn.preprocessing import LabelEncoder
 
+from .dataset import first_selection
+
 
 def get_exist_image(_df, _image_folder):
     """
@@ -77,3 +79,27 @@ def init_le(_df):
     le = LabelEncoder()
     le.fit(ids)
     return le
+
+
+def select_train_data(df_train, n_duplicated):
+    """
+    Select train data.
+    Select landmark_id, which is more than 'n' images.
+    """
+    id_count = df_train['landmark_id'].value_counts()
+    s_count = df_train['landmark_id'].map(id_count)
+    df_train = df_train[s_count >= n_duplicated]
+    print('landmark_id >= %d: %d, images: %d' %
+          (n_duplicated, (id_count >= n_duplicated).sum(), len(df_train)))
+    return df_train
+
+
+def split_train_valid_v2(df):
+    print('start select_train_valid_v2()')
+    # df_valid = random_selection(df, 1)
+    df_valid = first_selection(df)
+    valid_ids = df_valid['id'].values
+    df_train = df[~df['id'].isin(valid_ids)]
+    print('end select_train_valid_v2()')
+
+    return df_train, df_valid
