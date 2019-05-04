@@ -179,7 +179,7 @@ def predict_label2(model, metric_fc, test_dataset, label_encoder):
 
     # make df
     labels = label_encoder.inverse_transform(pred_indices[:, 0])
-    df_submit = make_df(loader.dataset.df, labels, pred_confs[:, 0])
+    df_submit = make_df(loader.dataset._df, labels, pred_confs[:, 0])
 
     # write result
     submit_file = 'submit_landmark.csv'

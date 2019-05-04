@@ -76,8 +76,13 @@ def train_main():
 
     # create label encoder
     # must be init_le() before get_exist_image()
-    label_encoder = init_le(df_train)
-    joblib.dump(label_encoder, 'le.pkl')
+    if config.USE_PRETRAINED:
+        le_path = os.path.join(config.PRETRAIN_PATH, 'le.pkl')
+        get_logger().info('loading %s' % le_path)
+        label_encoder = joblib.load(le_path)
+    else:
+        label_encoder = init_le(df_train)
+        joblib.dump(label_encoder, 'le.pkl')
 
     # use landmark_id,  which is more than N_SELECT+1 images
     df_train = get_exist_image(df_train, config.TRAIN_IMG_PATH)
@@ -156,7 +161,7 @@ def predict_main():
     df_test = get_exist_image(df_test_all, config.TEST_IMG_PATH)
 
     test_dataset = LandmarkDataset(
-        config.TEST_IMG_PATH, df_test, tst_trnsfms, is_train=False)
+        config.TEST_IMG_PATH, df_test, tst_trnsfms, mode='predict')
     label_encoder = joblib.load(os.path.join(config.PRETRAIN_PATH, 'le.pkl'))
 
     # Initialize model
@@ -186,7 +191,7 @@ def predict_main():
     df_sub2 = df_sub_sample.merge(df_sub, how='left', on='id')[
         ['id', 'landmarks']]
     print(df_sub2.head())
-    get_logger().info('Shape of submit csv file.' % str(df_sub2.shape))
+    get_logger().info('Shape of submit csv file: %s' % str(df_sub2.shape))
 
     df_sub2['landmarks'].fillna('', inplace=True)
     get_logger().info('Sum of null value: %d' %
@@ -200,4 +205,5 @@ def predict_main():
 if __name__ == '__main__':
     create_logger('landmark.log')
 
-    train_main()
+    # train_main()
+    predict_main()
