@@ -44,8 +44,8 @@ class ResNet(nn.Module):
     def __init__(self, output_neurons, n_classes, dropout_rate):
         super(ResNet, self).__init__()
         # self.resnet = torchvision.models.resnet50(pretrained=True)
-        # self.resnet = torchvision.models.resnet34(pretrained=True)
-        self.resnet = torchvision.models.resnet18(pretrained=True)
+        self.resnet = torchvision.models.resnet34(pretrained=True)
+        # self.resnet = torchvision.models.resnet18(pretrained=True)
         n_out_channels = 512  # resnet18, 34: 512, resnet50: 512*4
         self.norm1 = nn.BatchNorm1d(n_out_channels)
         self.drop1 = nn.Dropout(dropout_rate)
@@ -67,10 +67,11 @@ class ResNet(nn.Module):
         x = F.adaptive_avg_pool2d(x, (1, 1))
         x = x.view(x.size(0), -1)
         x = self.norm1(x)
+        x = F.relu(x)
         x = self.drop1(x)
         # FC
         x = self.fc(x)
-        x = self.norm2(x)
+        # x = self.norm2(x)
         # x = l2_norm(x)
         return x
 

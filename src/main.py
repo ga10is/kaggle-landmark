@@ -12,9 +12,10 @@ from .common.logger import create_logger, get_logger
 from .preprocessing import get_exist_image, init_le, select_train_data, split_train_valid_v2
 from .common.util import debug_trace
 from .dataset import LandmarkDataset
-from .model.model import trn_trnsfms, tst_trnsfms, ResNet
+from .model.model import trn_trnsfms, tst_trnsfms, ResNet, DenseNet
 from .model.model_util import save_checkpoint, load_model
-from .model.loss import ArcMarginProduct, FocalLoss
+from .model.loss import ArcMarginProduct, FocalLoss, DummyLayer
+from .delf.delf import Delf_V1
 
 
 @debug_trace
@@ -24,15 +25,19 @@ def init_model(le):
     print('model')
     n_classes = len(le.classes_)
     # Model
-    # _model = DenseNet(output_neurons=config.latent_dim, n_classes=len(le.classes_),  dropout_rate=0.5).cuda()
-    _model = ResNet(output_neurons=config.latent_dim,
-                    n_classes=n_classes, dropout_rate=config.DROPOUT_RATE).cuda()
+    # _model = DenseNet(output_neurons=config.latent_dim,
+    #                 n_classes=n_classes, dropout_rate=config.DROPOUT_RATE).cuda()
+    # _model = ResNet(output_neurons=config.latent_dim,
+    #                 n_classes=n_classes, dropout_rate=config.DROPOUT_RATE).cuda()
+    _model = Delf_V1(ncls=n_classes, arch='resnet34',
+                     stage='finetune', target_layer='layer3').cuda()
 
     print('metric_fc')
     # Last Layer
-    _metric_fc = ArcMarginProduct(
-        config.latent_dim, n_classes, s=config.S_TEMPERATURE, m=0.5, easy_margin=False).cuda()
+    # _metric_fc = ArcMarginProduct(
+    #    config.latent_dim, n_classes, s=config.S_TEMPERATURE, m=0.5, easy_margin=False).cuda()
     # _metric_fc = nn.Linear(config.latent_dim, n_classes).cuda()
+    _metric_fc = DummyLayer().cuda()
 
     print('criterion')
     # Loss function
@@ -63,8 +68,9 @@ def train_main():
     get_logger().info('latent_dim: %d' % config.latent_dim)
     get_logger().info('dropout_rate: %f' % config.DROPOUT_RATE)
     get_logger().info('scale temperature: %d' % config.S_TEMPERATURE)
-    get_logger().info('N_SELECT: %d' % config.N_SELECT)
-    get_logger().info('resnet18')
+    get_logger().info('the number of samples per class: %d' % config.N_SELECT)
+    get_logger().info('the number of uniques for training: %d' % config.N_UNIQUES)
+    get_logger().info('delf_resnet34')
     if config.USE_PRETRAINED:
         get_logger().info('pre-trained: %s' % config.PRETRAIN_PATH)
 
@@ -86,7 +92,7 @@ def train_main():
 
     # use landmark_id,  which is more than N_SELECT+1 images
     df_train = get_exist_image(df_train, config.TRAIN_IMG_PATH)
-    df_train = select_train_data(df_train, config.N_SELECT + 1)
+    df_train = select_train_data(df_train, config.N_UNIQUES)
 
     # train validate split
     df_trn, df_val = split_train_valid_v2(df_train)
@@ -150,7 +156,7 @@ def train_main():
 
 def predict_main():
     get_logger().info('batch size: %d' % config.BATCH_SIZE_TRAIN)
-    get_logger().info('resnet18')
+    get_logger().info('resnet34')
     get_logger().info('pre-trained: %s' % config.PRETRAIN_PATH)
 
     # load train data
@@ -205,5 +211,5 @@ def predict_main():
 if __name__ == '__main__':
     create_logger('landmark.log')
 
-    # train_main()
-    predict_main()
+    train_main()
+    # predict_main()

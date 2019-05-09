@@ -9,7 +9,7 @@ TRAIN_IMG_PATH = INPUT + 'train_448/'
 TEST_IMG_PATH = INPUT + 'test/'
 INDEX_IMG_PATH = INPUT + 'index/'
 USE_PRETRAINED = True
-PRETRAIN_PATH = './models/resnet18_5/'
+PRETRAIN_PATH = './models/delf_resnet34_2/'
 
 # config
 BATCH_SIZE_TRAIN = 300
@@ -20,4 +20,5 @@ LEARNING_RATE = 1e-4
 latent_dim = 512
 DROPOUT_RATE = 0.2
 S_TEMPERATURE = 100
-N_SELECT = 2
+N_SELECT = 20
+N_UNIQUES = 100

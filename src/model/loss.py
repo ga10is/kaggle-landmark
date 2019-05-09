@@ -58,6 +58,14 @@ class ArcMarginProduct(nn.Module):
         return output
 
 
+class DummyLayer(nn.Module):
+    def __init__(self):
+        super(DummyLayer, self).__init__()
+
+    def forward(self, x):
+        return x
+
+
 class FocalBinaryLoss(nn.Module):
     def __init__(self, gamma=0):
         super(FocalBinaryLoss, self).__init__()
