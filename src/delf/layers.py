@@ -115,9 +115,12 @@ class SpatialAttention2d(nn.Module):
         x : spatial feature map. (b x c x w x h)
         s : softplus attention score
         '''
+        # print(x.size())
         x = self.conv1(x)
+        # print(x.size())
         x = self.act1(x)
         x = self.conv2(x)
+        # print(x.size())
         x = self.softplus(x)
         return x
 

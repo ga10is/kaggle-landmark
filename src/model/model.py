@@ -97,3 +97,6 @@ class DenseNet(nn.Module):
         x = self.fc(x)
         x = self.norm2(x)
         return x
+
+
+# class DelfV2(nn.Module):

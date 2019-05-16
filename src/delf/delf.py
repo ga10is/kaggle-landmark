@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from ..common.logger import get_logger
 
 from .layers import (
     Flatten,
@@ -46,10 +47,13 @@ def __print_freeze_status__(model):
 
 
 def __load_weights_from__(module_dict, load_dict, modulenames):
+    # get_logger().info('load_weights')
     for modulename in modulenames:
         module = module_dict[modulename]
         print('loaded weights from module "{}" ...'.format(modulename))
+        # get_logger().info(list(module.parameters())[0])
         module.load_state_dict(load_dict[modulename])
+        # get_logger().info(list(module.parameters())[0])
 
 
 def __deep_copy_module__(module, exclude=[]):
@@ -141,6 +145,10 @@ class Delf_V1(nn.Module):
                     kernel_size=7, stride=1, padding=0,
                     ceil_mode=False, count_include_pad=True))
             elif self.stage in ['keypoint', 'inference']:
+                # in_c = 256
+                if self.target_layer in ['layer4']:
+                    self.__register_module__(
+                        'layer4', module_state_dict['layer4'])
                 # endpoint: attn, pool
                 self.__register_module__(
                     'attn', SpatialAttention2d(in_c=in_c, act_fn='relu'))
@@ -155,16 +163,18 @@ class Delf_V1(nn.Module):
 
             # load weights.
             if self.stage in ['keypoint']:
-                load_dict = torch.load(self.load_from)
+                # load_dict = torch.load(self.load_from)
+                load_dict = self.load_from
                 __load_weights_from__(
                     self.module_dict, load_dict, modulenames=['base'])
                 __freeze_weights__(self.module_dict, freeze=['base'])
-                print('load model from "{}"'.format(load_from))
+                # print('load model from "{}"'.format(load_from))
             elif self.stage in ['inference']:
-                load_dict = torch.load(self.load_from)
+                # load_dict = torch.load(self.load_from)
+                load_dict = self.load_from
                 __load_weights_from__(self.module_dict, load_dict, modulenames=[
                                       'base', 'attn', 'pool'])
-                print('load model from "{}"'.format(load_from))
+                # print('load model from "{}"'.format(load_from))
 
     def __register_module__(self, modulename, module):
         if isinstance(module, list) or isinstance(module, tuple):
@@ -187,6 +197,7 @@ class Delf_V1(nn.Module):
         return in_c
 
     def __forward_and_save__(self, x, modulename):
+        # print(modulename)
         module = self.module_dict[modulename]
         x = module(x)
         self.end_points[modulename] = x
