@@ -145,7 +145,7 @@ class Delf_V1(nn.Module):
                     kernel_size=7, stride=1, padding=0,
                     ceil_mode=False, count_include_pad=True))
             elif self.stage in ['keypoint', 'inference']:
-                # in_c = 256
+                in_c = 256
                 if self.target_layer in ['layer4']:
                     self.__register_module__(
                         'layer4', module_state_dict['layer4'])
@@ -163,12 +163,14 @@ class Delf_V1(nn.Module):
 
             # load weights.
             if self.stage in ['keypoint']:
-                # load_dict = torch.load(self.load_from)
-                load_dict = self.load_from
-                __load_weights_from__(
-                    self.module_dict, load_dict, modulenames=['base'])
-                __freeze_weights__(self.module_dict, freeze=['base'])
-                # print('load model from "{}"'.format(load_from))
+                if self.load_from is not None:
+                    # load_dict = torch.load(self.load_from)
+                    load_dict = self.load_from
+                    __load_weights_from__(
+                        self.module_dict, load_dict, modulenames=['base'])
+                    get_logger().info('not freeze')
+                    # __freeze_weights__(self.module_dict, freeze=['base'])
+                    # print('load model from "{}"'.format(load_from))
             elif self.stage in ['inference']:
                 # load_dict = torch.load(self.load_from)
                 load_dict = self.load_from

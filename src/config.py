@@ -8,11 +8,11 @@ SUBMIT_PATH = INPUT + 'recognition_sample_submission.csv'
 TRAIN_IMG_PATH = INPUT + 'train_448/'
 TEST_IMG_PATH = INPUT + 'test/'
 INDEX_IMG_PATH = INPUT + 'index/'
-USE_PRETRAINED = True
+USE_PRETRAINED = False
 PRETRAIN_PATH = './models/delf_resnet34_2/'
 
 # config
-BATCH_SIZE_TRAIN = 300
+BATCH_SIZE_TRAIN = 130
 NUM_WORKERS = 12
 EPOCHS = 12
 PRINT_FREQ = 100
@@ -22,3 +22,6 @@ DROPOUT_RATE = 0.2
 S_TEMPERATURE = 100
 N_SELECT = 20
 N_UNIQUES = 100
+
+# Places365
+PLACE365_TRAIN_PATH = './data/places365/'

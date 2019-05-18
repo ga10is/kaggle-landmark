@@ -12,7 +12,7 @@ from .common.logger import create_logger, get_logger
 from .preprocessing import get_exist_image, init_le, select_train_data, split_train_valid_v2
 from .common.util import debug_trace
 from .dataset import LandmarkDataset
-from .model.model import trn_trnsfms, tst_trnsfms, ResNet, DenseNet
+from .model.model import trn_trnsfms, tst_trnsfms, ResNet, DenseNet, DelfResNet
 from .model.model_util import save_checkpoint, load_model
 from .model.loss import ArcMarginProduct, FocalLoss, DummyLayer
 from .delf.delf import Delf_V1
@@ -29,18 +29,19 @@ def init_model(le):
     #                 n_classes=n_classes, dropout_rate=config.DROPOUT_RATE).cuda()
     # _model = ResNet(output_neurons=config.latent_dim,
     #                 n_classes=n_classes, dropout_rate=config.DROPOUT_RATE).cuda()
-    _model = Delf_V1(ncls=n_classes,
-                     arch='resnet34',
-                     stage='finetune',
-                     target_layer='layer3'
-                     ).cuda()
+    # _model = Delf_V1(ncls=n_classes,
+    #                 arch='resnet34',
+    #                 stage='finetune',
+    #                 target_layer='layer3'
+    #                 ).cuda()
+    _model = DelfResNet().cuda()
 
     print('metric_fc')
     # Last Layer
     # _metric_fc = ArcMarginProduct(
     #    config.latent_dim, n_classes, s=config.S_TEMPERATURE, m=0.5, easy_margin=False).cuda()
-    # _metric_fc = nn.Linear(config.latent_dim, n_classes).cuda()
-    _metric_fc = DummyLayer().cuda()
+    _metric_fc = nn.Linear(config.latent_dim, n_classes).cuda()
+    # _metric_fc = DummyLayer().cuda()
 
     print('criterion')
     # Loss function
@@ -79,7 +80,7 @@ def change_delf(_model, n_classes):
                         load_from=delf_state,
                         arch=_model.arch,
                         stage='keypoint',
-                        target_layer='layer4',  # 'layer3',
+                        target_layer='layer3',
                         use_random_gamma_rescale=True).cuda()
     return model_new
 
@@ -92,7 +93,7 @@ def train_main():
     get_logger().info('scale temperature: %d' % config.S_TEMPERATURE)
     get_logger().info('the number of samples per class: %d' % config.N_SELECT)
     get_logger().info('the number of uniques for training: %d' % config.N_UNIQUES)
-    get_logger().info('kdelf_resnet34')
+    get_logger().info('delf_resnet50')
     if config.USE_PRETRAINED:
         get_logger().info('pre-trained: %s' % config.PRETRAIN_PATH)
 

@@ -4,6 +4,7 @@ import torchvision
 import torchvision.transforms as transforms
 
 from .. import config
+from ..delf.layers import SpatialAttention2d, WeightedSum2d
 # import matplotlib.pyplot as plt
 # import numpy as np
 
@@ -99,4 +100,34 @@ class DenseNet(nn.Module):
         return x
 
 
-# class DelfV2(nn.Module):
+class DelfResNet(nn.Module):
+    def __init__(self):
+        super(DelfResNet, self).__init__()
+        self.resnet = torchvision.models.resnet50(pretrained=True)
+        # self.resnet = torchvision.models.resnet34(pretrained=True)
+        # self.resnet = torchvision.models.resnet18(pretrained=True)
+        d_delf = config.latent_dim
+        self.conv = nn.Conv2d(1024, d_delf, 1, 1)
+        self.attn = SpatialAttention2d(in_c=d_delf, act_fn='relu')
+        self.pool = WeightedSum2d()
+
+    def forward(self, x):
+        x = self.resnet.conv1(x)
+        x = self.resnet.bn1(x)
+        x = self.resnet.relu(x)
+        x = self.resnet.maxpool(x)
+
+        x = self.resnet.layer1(x)
+        x = self.resnet.layer2(x)
+        x = self.resnet.layer3(x)
+        # x = self.resnet.layer4(x)
+        x = self.conv(x)
+        # x = F.relu(x)
+        # print('conv: %s' % str(x.size()))
+
+        attn_x = F.normalize(x, p=2, dim=1)
+        attn_score = self.attn(x)
+        x = self.pool([attn_x, attn_score])
+        x = x.view(x.size(0), -1)
+
+        return x
