@@ -16,6 +16,7 @@ from .model.model import trn_trnsfms, tst_trnsfms, ResNet, DenseNet, DelfResNet
 from .model.model_util import save_checkpoint, load_model
 from .model.loss import ArcMarginProduct, FocalLoss, DummyLayer
 from .delf.delf import Delf_V1
+from .place365 import postprocess
 
 
 @debug_trace
@@ -93,7 +94,7 @@ def train_main():
     get_logger().info('scale temperature: %d' % config.S_TEMPERATURE)
     get_logger().info('the number of samples per class: %d' % config.N_SELECT)
     get_logger().info('the number of uniques for training: %d' % config.N_UNIQUES)
-    get_logger().info('delf_resnet50')
+    get_logger().info('model: %s' % config.MODEL)
     if config.USE_PRETRAINED:
         get_logger().info('pre-trained: %s' % config.PRETRAIN_PATH)
 
@@ -101,7 +102,11 @@ def train_main():
     # load train data
     get_logger().info('loading df_train.')
     df_train = pd.read_csv(config.TRAIN_PATH, dtype={'id': 'object'})
+    del df_train['url']
     print(df_train.head())
+    # read non landmark data
+    non_landmark = pd.read_csv(config.NON_LANDMARK_PATH)
+    print(non_landmark.head())
 
     # create label encoder
     # must be init_le() before get_exist_image()
@@ -110,11 +115,19 @@ def train_main():
         get_logger().info('loading %s' % le_path)
         label_encoder = joblib.load(le_path)
     else:
-        label_encoder = init_le(df_train)
+        landmark_list = df_train['landmark_id'].tolist() \
+            + non_landmark['landmark_id'].tolist()
+        label_encoder = init_le(landmark_list)
         joblib.dump(label_encoder, 'le.pkl')
 
     # use landmark_id,  which is more than N_SELECT+1 images
     df_train = get_exist_image(df_train, config.TRAIN_IMG_PATH)
+
+    # append non landmark to df_train
+    # df_train = pd.concat([df_train, non_landmark])
+    df_train = pd.concat([non_landmark, df_train])
+
+    # select landmarks which is many images
     df_train = select_train_data(df_train, config.N_UNIQUES)
 
     # train validate split
@@ -151,16 +164,16 @@ def train_main():
     # Load model
     if config.USE_PRETRAINED:
         start_epoch, model, metric_fc, optimizer, scheduler = \
-            load_model(model, metric_fc, optimizer,
-                       scheduler, reset_epoch=True)
-        # change delf mode: finetune->keypoint
-        n_classes = len(label_encoder.classes_)
-        model = change_delf(model, n_classes)
-        optimizer = optim.Adam([{'params': model.parameters()}, {
-            'params': metric_fc.parameters()}], lr=config.LEARNING_RATE)
-        mile_stones = [5, 7, 9, 10, 11, 12]
-        scheduler = optim.lr_scheduler.MultiStepLR(
-            optimizer, mile_stones, gamma=0.5, last_epoch=-1)
+            load_model(model, metric_fc, optimizer, scheduler)
+
+        if config.RESET_OPTIM:
+            # if reset optimizer, add following code
+            start_epoch = 0
+            optimizer = optim.Adam([{'params': model.parameters()}, {
+                'params': metric_fc.parameters()}], lr=config.LEARNING_RATE)
+            mile_stones = [5, 7, 9, 10, 11, 12]
+            scheduler = optim.lr_scheduler.MultiStepLR(
+                optimizer, mile_stones, gamma=0.5, last_epoch=-1)
 
     for epoch in range(start_epoch + 1, config.EPOCHS + 1):
         scheduler.step()
@@ -188,8 +201,9 @@ def train_main():
 
 def predict_main():
     get_logger().info('batch size: %d' % config.BATCH_SIZE_TRAIN)
-    get_logger().info('resnet34')
+    get_logger().info('model: %s' % config.MODEL)
     get_logger().info('pre-trained: %s' % config.PRETRAIN_PATH)
+    get_logger().info('run tta: %s' % config.RUN_TTA)
 
     # load train data
     get_logger().info('loading df_test.')
@@ -198,8 +212,13 @@ def predict_main():
 
     df_test = get_exist_image(df_test_all, config.TEST_IMG_PATH)
 
+    # Dataset
+    if config.RUN_TTA:
+        predict_transform = trn_trnsfms
+    else:
+        predict_transform = tst_trnsfms
     test_dataset = LandmarkDataset(
-        config.TEST_IMG_PATH, df_test, tst_trnsfms, mode='predict')
+        config.TEST_IMG_PATH, df_test, predict_transform, mode='predict')
     label_encoder = joblib.load(os.path.join(config.PRETRAIN_PATH, 'le.pkl'))
 
     # Initialize model
@@ -219,6 +238,10 @@ def predict_main():
     df_sub = pd.read_csv('submit_landmark.csv', dtype={'id': 'object'})
     print(df_sub.head())
     get_logger().info('Shape of predicted csv: %s' % str(df_sub.shape))
+
+    df_sub = postprocess.remove_non_landmark(df_sub)
+    # TODO: remove
+    df_sub.to_csv('tmp_submit.csv')
 
     get_logger().info('load sample submit file.')
     df_sub_sample = pd.read_csv(config.SUBMIT_PATH, dtype={'id': 'object'})

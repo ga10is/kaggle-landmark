@@ -160,7 +160,17 @@ def predict_label2(model, metric_fc, test_dataset, label_encoder):
             emb_vec = model(img)
             logit = metric_fc(emb_vec)
 
-            # from IPython.core.debugger import Pdb; Pdb().set_trace()
+            '''
+            if config.RUN_TTA:
+                # TTA
+                sum_logit = logit.detach()
+                for _ in range(config.N_TTA - 1):
+                    emb_vec = model(img)
+                    logit = metric_fc(emb_vec)
+                    sum_logit = sum_logit + logit
+                logit = sum_logit / N_TTA
+            '''
+
             top_scores, top_indices = torch.topk(logit, k=20)
             top_indices = top_indices.detach().cpu().numpy()
             top_scores = top_scores.detach().cpu().numpy()

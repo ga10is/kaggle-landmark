@@ -49,7 +49,7 @@ def get_image_ids(dir_path):
         for sub_dir in os.listdir(dir_path):
             sub_dir_path = os.path.join(dir_path, sub_dir)
             if os.path.isdir(sub_dir_path):
-                print('dir: %s' % sub_dir_path)
+                # print('dir: %s' % sub_dir_path)
                 futures.append(executor.submit(
                     get_image_ids_from_subdir, dir_path, sub_dir))
 
@@ -74,8 +74,10 @@ def move_to_folder(dir_path):
             print('There is a file which is not image: %s' % file)
 
 
-def init_le(_df):
-    ids = _df['landmark_id'].values.tolist()
+def init_le(ids):
+    """
+    Return initialized LabelEncoder.
+    """
     le = LabelEncoder()
     le.fit(ids)
     return le
@@ -96,7 +98,7 @@ def select_train_data(df_train, n_duplicated):
 
 def split_train_valid_v2(df):
     print('start select_train_valid_v2()')
-    # df_valid = random_selection(df, 1)
+    # do not randomly select validation data
     df_valid = first_selection(df)
     valid_ids = df_valid['id'].values
     df_train = df[~df['id'].isin(valid_ids)]

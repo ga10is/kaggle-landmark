@@ -8,10 +8,12 @@ SUBMIT_PATH = INPUT + 'recognition_sample_submission.csv'
 TRAIN_IMG_PATH = INPUT + 'train_448/'
 TEST_IMG_PATH = INPUT + 'test/'
 INDEX_IMG_PATH = INPUT + 'index/'
-USE_PRETRAINED = False
-PRETRAIN_PATH = './models/delf_resnet34_2/'
+USE_PRETRAINED = True
+PRETRAIN_PATH = './models/delf_resnet50_3/'
+RESET_OPTIM = False
 
 # config
+MODEL = 'delf_resnet50'
 BATCH_SIZE_TRAIN = 130
 NUM_WORKERS = 12
 EPOCHS = 12
@@ -20,8 +22,12 @@ LEARNING_RATE = 1e-4
 latent_dim = 512
 DROPOUT_RATE = 0.2
 S_TEMPERATURE = 100
-N_SELECT = 20
+N_SELECT = 30
 N_UNIQUES = 100
+RUN_TTA = False
+N_TTA = 2
 
-# Places365
-PLACE365_TRAIN_PATH = './data/places365/'
+# non_landmark
+PLACES365_PATH = './data/places365/categories_places365_extended.csv'
+NON_LANDMARK_PATH = './data/places365/non_landmark.csv'
+NON_LANDMARK_IMG_PATH = './data/places365/train/places365_indoor/'

@@ -34,7 +34,12 @@ class LandmarkDataset(Dataset):
 
     def __getitem__(self, idx):
         img_name = '%s.jpg' % self.selected.iloc[idx]['id']
-        img = self.__get_image(img_name)
+        if img_name.startswith('non-'):
+            # if image is not landmark
+            img = self.__get_image_non_landmark(img_name)
+        else:
+            img = self.__get_image(img_name)
+
         label = None
         if self.mode in ['train', 'valid']:
             id = self.selected.iloc[idx]['landmark_id']
@@ -50,7 +55,7 @@ class LandmarkDataset(Dataset):
 
     def __load_image(self, img_name):
         """
-        load images and bound boxing
+        load images
         """
         sub_folder0 = img_name[0]
         sub_folder1 = img_name[1]
@@ -59,6 +64,19 @@ class LandmarkDataset(Dataset):
                             sub_folder1, sub_folder2, img_name)
         # load images
         img = Image.open(path).convert('RGB')
+        return img
+
+    def __get_image_non_landmark(self, img_name):
+        """
+        load no landmark image
+        """
+        img_name = img_name[4:]
+        dir_name, file_name = img_name.split('@')
+        path = os.path.join(config.NON_LANDMARK_IMG_PATH, dir_name, file_name)
+
+        # load image
+        img = Image.open(path).convert('RGB')
+        img = self.transform(img)
         return img
 
     def update(self):
@@ -90,7 +108,8 @@ def func2_landmark_to_id(landmark, group, n_sample):
         the number of samples
     """
     sampled = random.sample(group.get_group(landmark).tolist(), n_sample)
-    return np.array(sampled)
+    # specify the length of string because numpy cut string for aligning the length of the string
+    return np.array(sampled, dtype='U50')
 
 
 # vectorized function
