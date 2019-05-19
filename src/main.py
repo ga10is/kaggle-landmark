@@ -12,9 +12,9 @@ from .common.logger import create_logger, get_logger
 from .preprocessing import get_exist_image, init_le, select_train_data, split_train_valid_v2
 from .common.util import debug_trace
 from .dataset import LandmarkDataset
-from .model.model import trn_trnsfms, tst_trnsfms, ResNet, DenseNet, DelfResNet
+from .model.model import trn_trnsfms, tst_trnsfms, ResNet, DenseNet, DelfResNet, DelfMoblileNetV2
 from .model.model_util import save_checkpoint, load_model
-from .model.loss import ArcMarginProduct, FocalLoss, DummyLayer
+from .model.loss import ArcMarginProduct, FocalLoss
 from .delf.delf import Delf_V1
 from .place365 import postprocess
 
@@ -35,7 +35,8 @@ def init_model(le):
     #                 stage='finetune',
     #                 target_layer='layer3'
     #                 ).cuda()
-    _model = DelfResNet().cuda()
+    # _model = DelfResNet().cuda()
+    _model = DelfMoblileNetV2().cuda()
 
     print('metric_fc')
     # Last Layer
@@ -54,7 +55,7 @@ def init_model(le):
     _optimizer = optim.Adam([{'params': _model.parameters()}, {
         'params': _metric_fc.parameters()}], lr=config.LEARNING_RATE)
     # _optimizer = optim.SGD([{'params': _model.parameters()}, {'params': _metric_fc.parameters()}],
-    #                       lr=1e-3, momentum=0.9, weight_decay=1e-4)
+    #        lr=config.LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
 
     print('scheduler')
     # Scheduler
@@ -119,6 +120,8 @@ def train_main():
             + non_landmark['landmark_id'].tolist()
         label_encoder = init_le(landmark_list)
         joblib.dump(label_encoder, 'le.pkl')
+    get_logger().info('The number of classes to train: %d' %
+                      len(label_encoder.classes_))
 
     # use landmark_id,  which is more than N_SELECT+1 images
     df_train = get_exist_image(df_train, config.TRAIN_IMG_PATH)
@@ -169,9 +172,11 @@ def train_main():
         if config.RESET_OPTIM:
             # if reset optimizer, add following code
             start_epoch = 0
-            optimizer = optim.Adam([{'params': model.parameters()}, {
-                'params': metric_fc.parameters()}], lr=config.LEARNING_RATE)
-            mile_stones = [5, 7, 9, 10, 11, 12]
+            optimizer = optim.SGD([{'params': model.parameters()}, {'params': metric_fc.parameters()}],
+                                  lr=config.LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
+            # optimizer = optim.Adam([{'params': model.parameters()}, {
+            #     'params': metric_fc.parameters()}], lr=config.LEARNING_RATE)
+            mile_stones = [3, 5, 7, 9, 10, 11, 12]
             scheduler = optim.lr_scheduler.MultiStepLR(
                 optimizer, mile_stones, gamma=0.5, last_epoch=-1)
 

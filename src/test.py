@@ -1,3 +1,5 @@
+import torch
+import torch.nn.functional as F
 import pandas as pd
 import random
 import numpy as np
@@ -120,5 +122,27 @@ def call_remove_non_landmark():
     print(submit)
 
 
+class Child():
+    def __init__(self):
+        self.attr1 = 'attr1'
+        self.attr2 = 'attr2'
+
+
+class Sample:
+    def __init__(self):
+        self.child = Child()
+
+        del self.child.attr2
+
+    def print(self):
+        print(self.child)
+
+
 if __name__ == '__main__':
-    call_remove_non_landmark()
+    input = torch.randn(1, 1, 4, 4)
+    print(input)
+    weight = torch.ones(1, 1, 2, 2)
+    print(weight)
+    output = F.conv2d(input, weight, stride=2)
+    print(output)
+    print(output.size())
