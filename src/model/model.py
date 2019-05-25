@@ -1,3 +1,4 @@
+import pretrainedmodels
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,6 +8,7 @@ import torchvision.transforms as transforms
 from .. import config
 from ..delf.layers import SpatialAttention2d, WeightedSum2d
 from .mobilev2 import MobileNetV2, InvertedResidual
+from .octave import oct_resnet
 # import matplotlib.pyplot as plt
 # import numpy as np
 
@@ -151,7 +153,7 @@ class DelfMoblileNetV2(nn.Module):
         super(DelfMoblileNetV2, self).__init__()
         self.features = MobileNetV2(
             n_class=1, input_size=config.INPUT_SIZE[0]).features
-
+        '''
         d_delf = config.latent_dim
         d_half = round(d_delf / 2)
 
@@ -161,8 +163,15 @@ class DelfMoblileNetV2(nn.Module):
         self.attn1 = SpatialAttention2d(in_c=d_half, act_fn='relu')
         self.attn2 = SpatialAttention2d(in_c=d_half, act_fn='relu')
         self.pool = WeightedSum2d()
+        '''
+        d_delf = config.latent_dim
+
+        self.inv_conv2 = InvertedResidual(1280, d_delf, 1, 0.2)
+        self.attn2 = SpatialAttention2d(in_c=d_delf, act_fn='relu')
+        self.pool = WeightedSum2d()
 
     def forward(self, x):
+        '''
         for layer in self.features[:14]:
             x = layer(x)
         # print('features size: %s' % str(x.size()))  # 96x14x14
@@ -186,18 +195,60 @@ class DelfMoblileNetV2(nn.Module):
         x2 = x2.view(x2.size(0), -1)
 
         x = torch.cat([x1, x2], 1)
+        '''
+        for layer in self.features[:14]:
+            x = layer(x)
+        # print('features size: %s' % str(x.size()))  # 96x14x14
+
+        for layer in self.features[14:]:
+            x = layer(x)
+        # print('features size: %s' % str(x.size()))  # 1280x7x7
+
+        x = self.inv_conv2(x)
+
+        # Attention
+        attn_x = F.normalize(x, p=2, dim=1)
+        attn_score = self.attn2(x)
+        x2 = self.pool([attn_x, attn_score])
+        x2 = x2.view(x2.size(0), -1)
+
+        # GAP
+        xm = F.adaptive_avg_pool2d(x, (1, 1))
+        xm = xm.view(xm.size(0), -1)
+
+        x = F.normalize(x2, p=2, dim=1) + F.normalize(xm, p=2, dim=1)
 
         return x
 
-    """
+
+class DelfOctaveResnet(nn.Module):
+    def __init__(self):
+        super(DelfOctaveResnet, self).__init__()
+        self.resnet = oct_resnet.resnet50(num_classes=1)
+
+        d_delf = config.latent_dim
+        # d_half = round(d_delf / 2)
+
+        self.conv = nn.Conv2d(2048, d_delf, kernel_size=(3, 3))
+        self.bn = nn.BatchNorm2d(d_delf)
+
+        self.attn = SpatialAttention2d(in_c=d_delf, act_fn='relu')
+        self.pool = WeightedSum2d()
+
     def forward(self, x):
-        x = self.features(x)
-        # print(self.features)
-        # print('features size: %s' % str(x.size()))
+        x = self.resnet.conv1(x)
+        x = self.resnet.bn1(x)
+        x = self.resnet.relu(x)
+        x = self.resnet.maxpool(x)
+
+        x_h, x_l = self.resnet.layer1(x)
+        x_h, x_l = self.resnet.layer2((x_h, x_l))
+        x_h, x_l = self.resnet.layer3((x_h, x_l))
+        x_h = self.resnet.layer4((x_h, x_l))
 
         x = self.conv(x)
         x = self.bn(x)
-        x = self.relu(x)
+        x = F.relu(x)
 
         attn_x = F.normalize(x, p=2, dim=1)
         attn_score = self.attn(x)
@@ -205,4 +256,58 @@ class DelfMoblileNetV2(nn.Module):
         x = x.view(x.size(0), -1)
 
         return x
-    """
+
+
+class DelfSEResNet(nn.Module):
+    def __init__(self):
+        super(DelfSEResNet, self).__init__()
+        self.resnet = pretrainedmodels.__dict__['se_resnext50_32x4d'](
+            num_classes=1000, pretrained='imagenet')
+
+        d_delf = config.latent_dim
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(512, d_delf, 3),
+            nn.BatchNorm2d(d_delf)
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(1024, d_delf, 3),
+            nn.BatchNorm2d(d_delf)
+        )
+        self.attn1 = SpatialAttention2d(in_c=d_delf, act_fn='relu')
+        self.attn2 = SpatialAttention2d(in_c=d_delf, act_fn='relu')
+        self.pool = WeightedSum2d()
+
+    def forward(self, x):
+        x = self.resnet.layer0(x)
+        x = self.resnet.layer1(x)
+        x = self.resnet.layer2(x)
+        # print('layer2: %s' % str(x.size()))
+
+        x1 = self.conv1(x)
+        # x1 = F.relu(x1)
+
+        # Attention
+        attn_x1 = F.normalize(x1, p=2, dim=1)
+        attn_score1 = self.attn1(x1)
+        x1 = self.pool([attn_x1, attn_score1])
+        x1 = x1.view(x1.size(0), -1)
+
+        x = self.resnet.layer3(x)
+        x = self.conv2(x)
+        x2 = x
+        # x2 = F.relu(x2)
+
+        # Attention
+        attn_x2 = F.normalize(x2, p=2, dim=1)
+        attn_score2 = self.attn2(x2)
+        x2 = self.pool([attn_x2, attn_score2])
+        x2 = x2.view(x2.size(0), -1)
+
+        # GAP
+        xm = F.adaptive_avg_pool2d(x, (1, 1))
+        xm = xm.view(xm.size(0), -1)
+
+        x = F.normalize(x1, p=2, dim=1) + F.normalize(x2, p=2,
+                                                      dim=1) + F.normalize(xm, p=2, dim=1)
+
+        return x

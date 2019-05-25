@@ -12,7 +12,7 @@ from .common.logger import create_logger, get_logger
 from .preprocessing import get_exist_image, init_le, select_train_data, split_train_valid_v2
 from .common.util import debug_trace
 from .dataset import LandmarkDataset
-from .model.model import trn_trnsfms, tst_trnsfms, ResNet, DenseNet, DelfResNet, DelfMoblileNetV2
+from .model.model import trn_trnsfms, tst_trnsfms, ResNet, DenseNet, DelfResNet, DelfMoblileNetV2, DelfOctaveResnet, DelfSEResNet
 from .model.model_util import save_checkpoint, load_model
 from .model.loss import ArcMarginProduct, FocalLoss
 from .delf.delf import Delf_V1
@@ -36,7 +36,9 @@ def init_model(le):
     #                 target_layer='layer3'
     #                 ).cuda()
     # _model = DelfResNet().cuda()
-    _model = DelfMoblileNetV2().cuda()
+    # _model = DelfMoblileNetV2().cuda()
+    # _model = DelfOctaveResnet().cuda()
+    _model = DelfSEResNet().cuda()
 
     print('metric_fc')
     # Last Layer
@@ -68,25 +70,6 @@ def init_model(le):
     return _model, _metric_fc, _criterion, _optimizer, _scheduler
 
 
-def change_delf(_model, n_classes):
-    """
-    change Delf_V1(finetune) to keypoint
-
-    Parameters
-    ----------
-    _model: Delf_V1
-    """
-    delf_state = {}
-    _model.write_to(delf_state)
-    model_new = Delf_V1(ncls=n_classes,
-                        load_from=delf_state,
-                        arch=_model.arch,
-                        stage='keypoint',
-                        target_layer='layer3',
-                        use_random_gamma_rescale=True).cuda()
-    return model_new
-
-
 def train_main():
     get_logger().info('batch size: %d' % config.BATCH_SIZE_TRAIN)
     get_logger().info('epochs: %d' % config.EPOCHS)
@@ -109,6 +92,16 @@ def train_main():
     non_landmark = pd.read_csv(config.NON_LANDMARK_PATH)
     print(non_landmark.head())
 
+    # use landmark_id,  which is more than N_SELECT+1 images
+    df_train = get_exist_image(df_train, config.TRAIN_IMG_PATH)
+
+    # append non landmark to df_train
+    # df_train = pd.concat([df_train, non_landmark])
+    df_train = pd.concat([non_landmark, df_train])
+
+    # select landmarks which is many images
+    df_train = select_train_data(df_train, config.N_UNIQUES)
+
     # create label encoder
     # must be init_le() before get_exist_image()
     if config.USE_PRETRAINED:
@@ -122,16 +115,6 @@ def train_main():
         joblib.dump(label_encoder, 'le.pkl')
     get_logger().info('The number of classes to train: %d' %
                       len(label_encoder.classes_))
-
-    # use landmark_id,  which is more than N_SELECT+1 images
-    df_train = get_exist_image(df_train, config.TRAIN_IMG_PATH)
-
-    # append non landmark to df_train
-    # df_train = pd.concat([df_train, non_landmark])
-    df_train = pd.concat([non_landmark, df_train])
-
-    # select landmarks which is many images
-    df_train = select_train_data(df_train, config.N_UNIQUES)
 
     # train validate split
     df_trn, df_val = split_train_valid_v2(df_train)

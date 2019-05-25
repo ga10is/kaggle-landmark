@@ -9,8 +9,10 @@ from multiprocessing import Pool
 import cv2
 from tqdm import tqdm
 
-images_base_url = 'https://s3.amazonaws.com/google-landmark/train/images_{:03d}.tar'
-md5_base_url = 'https://s3.amazonaws.com/google-landmark/md5sum/train/md5.images_{:03d}.txt'
+# images_base_url = 'https://s3.amazonaws.com/google-landmark/train/images_{:03d}.tar'
+# md5_base_url = 'https://s3.amazonaws.com/google-landmark/md5sum/train/md5.images_{:03d}.txt'
+images_base_url = 'https://s3.amazonaws.com/google-landmark/test/images_{:03d}.tar'
+md5_base_url = 'https://s3.amazonaws.com/google-landmark/md5sum/test/md5.images_{:03d}.txt'
 
 
 def md5(path):
@@ -102,7 +104,7 @@ def main(target_dir, resized_dir, processes):
 
 
 if __name__ == "__main__":
-    TARGET_DIR = './data/raw/train'
-    RESIZED_DIR = './data/raw/train_448'
+    TARGET_DIR = './data/raw/test_stage2'
+    RESIZED_DIR = './data/raw/test_stage2_256'
 
     main(TARGET_DIR, RESIZED_DIR, 10)

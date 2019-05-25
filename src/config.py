@@ -1,5 +1,5 @@
-IMG_SIZE = (256, 256)
-INPUT_SIZE = (224, 224)
+IMG_SIZE = (156, 156)
+INPUT_SIZE = (128, 128)
 INPUT = './data/raw/'
 INDEX_PATH = INPUT + 'index.csv'
 TRAIN_PATH = INPUT + 'train.csv'
@@ -8,21 +8,21 @@ SUBMIT_PATH = INPUT + 'recognition_sample_submission.csv'
 TRAIN_IMG_PATH = INPUT + 'train_448/'
 TEST_IMG_PATH = INPUT + 'test/'
 INDEX_IMG_PATH = INPUT + 'index/'
-USE_PRETRAINED = False
-PRETRAIN_PATH = './models/delf_resnet50_3/'
+USE_PRETRAINED = True
+PRETRAIN_PATH = './models/delf_seresnet50_1/'
 RESET_OPTIM = False
 
 # config
-MODEL = 'delf_mobilev2'
-BATCH_SIZE_TRAIN = 180
-NUM_WORKERS = 12
+MODEL = 'delf_seresnet50'
+BATCH_SIZE_TRAIN = 300
+NUM_WORKERS = 16
 EPOCHS = 12
 PRINT_FREQ = 100
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 1e-3
 latent_dim = 512
 DROPOUT_RATE = 0.2
-S_TEMPERATURE = 100
-N_SELECT = 20
+S_TEMPERATURE = 30
+N_SELECT = 40
 N_UNIQUES = 50
 RUN_TTA = False
 N_TTA = 2

@@ -15,12 +15,10 @@ def load_checkpoint(_model, _metric_fc, _optimizer, _scheduler, fpath):
     checkpoint = torch.load(fpath)
     # reset optimizer setting
     _epoch = checkpoint['epoch']
-    # TODO: back
-    # _optimizer.load_state_dict(checkpoint['optimizer'])
+    _optimizer.load_state_dict(checkpoint['optimizer'])
     _scheduler.load_state_dict(checkpoint['scheduler'])
     _model.load_state_dict(checkpoint['state_dict'])
-    # TODO: back
-    # _metric_fc.load_state_dict(checkpoint['metric_fc'])
+    _metric_fc.load_state_dict(checkpoint['metric_fc'])
 
     return _epoch, _model, _metric_fc, _optimizer, _scheduler
 

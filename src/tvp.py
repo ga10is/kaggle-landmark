@@ -113,26 +113,37 @@ def validate_arcface(model,
     return top1.avg
 
 
-def make_df(df_org, labels, confidences):
+def make_df(df_org, labels, confidences, le):
     """
     make dataframe for submission
+
+    Parameters
+    ----------
     df_org: pd.DataFrame of shape = [n_samples, more than 1]
         dataframe which have id column
-    labels: ndarray of shape = [n_samples]
-        array of label(number)
-    confidences: ndarray of shape = [n_samples]
+    labels: ndarray of shape = [n_samples, n_predicts]
+        array of indices(number)
+    confidences: ndarray of shape = [n_samples, n_predicts]
         array of confidence(float)
+    le: LabelEncoder
+        label encoder
+
     Returns
+    ------
     pd.DataFrame of shape = [n_samples, 2]
         the dataframe has 'id', 'landmarks' columns.
     """
     # from IPython.core.debugger import Pdb; Pdb().set_trace()
     new_df = pd.DataFrame()
     new_df['id'] = df_org['id']
-    new_df['label'] = labels.astype(str)
-    new_df['confidence'] = confidences.astype(str)
-    new_df['landmarks'] = new_df['label'] + ' ' + new_df['confidence']
-    del new_df['label'], new_df['confidence']
+    new_df['landmarks'] = ''
+    for i in range(labels.shape[1]):
+        if i != 0:
+            new_df['landmarks'] += ' '
+        new_df['landmarks'] += le.inverse_transform(labels[:, i]).astype(str)
+        new_df['landmarks'] += ' '
+        new_df['landmarks'] += confidences[:, i].astype(str)
+
     return new_df
 
 
@@ -188,8 +199,9 @@ def predict_label2(model, metric_fc, test_dataset, label_encoder):
     pred_confs = np.concatenate(pred_confs)
 
     # make df
-    labels = label_encoder.inverse_transform(pred_indices[:, 0])
-    df_submit = make_df(loader.dataset._df, labels, pred_confs[:, 0])
+    # labels = label_encoder.inverse_transform(pred_indices[:, 0])
+    df_submit = make_df(loader.dataset._df, pred_indices,
+                        pred_confs, label_encoder)
 
     # write result
     submit_file = 'submit_landmark.csv'
