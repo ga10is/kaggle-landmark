@@ -49,11 +49,11 @@ class LandmarkDataset(Dataset):
         return img, label
 
     def __get_image(self, img_name):
-        img = self.__load_image(img_name)
+        img = self._load_image(img_name)
         img = self.transform(img)
         return img
 
-    def __load_image(self, img_name):
+    def _load_image(self, img_name):
         """
         load images
         """
@@ -87,6 +87,36 @@ class LandmarkDataset(Dataset):
             raise ValueError('LandmarkDataset is not train mode.')
         self.selected = random_selection(self._df, config.N_SELECT)
         print('updated selected images.')
+
+
+class LandmarkTTADataset(LandmarkDataset):
+    def __init__(self, image_folder, df, transform, mode, n_tta, le=None):
+        super(LandmarkTTADataset, self).__init__(image_folder,
+                                                 df,
+                                                 transform,
+                                                 mode)
+        self.n_tta = n_tta
+
+    def __getitem__(self, idx):
+        """
+        Returns
+        -------
+        imgs: list of ndarray
+        label: int
+            -1
+        """
+        img_name = '%s.jpg' % self.selected.iloc[idx]['id']
+
+        img = self._load_image(img_name)
+        # img = super()._load_image(img_name)
+        imgs = []
+        for _ in range(self.n_tta):
+            img_new = img.copy()
+            img_new = self.transform(img_new)
+            imgs.append(img_new)
+
+        label = -1
+        return imgs, label
 
 
 def func_landmark_to_id(group, n_samples):

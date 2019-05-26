@@ -11,11 +11,10 @@ from . import tvp
 from .common.logger import create_logger, get_logger
 from .preprocessing import get_exist_image, init_le, select_train_data, split_train_valid_v2
 from .common.util import debug_trace
-from .dataset import LandmarkDataset
-from .model.model import trn_trnsfms, tst_trnsfms, ResNet, DenseNet, DelfResNet, DelfMoblileNetV2, DelfOctaveResnet, DelfSEResNet
+from .dataset import LandmarkDataset, LandmarkTTADataset
+from .model.model import trn_trnsfms, tst_trnsfms, DelfSEResNet
 from .model.model_util import save_checkpoint, load_model
 from .model.loss import ArcMarginProduct, FocalLoss
-from .delf.delf import Delf_V1
 from .place365 import postprocess
 
 
@@ -38,13 +37,14 @@ def init_model(le):
     # _model = DelfResNet().cuda()
     # _model = DelfMoblileNetV2().cuda()
     # _model = DelfOctaveResnet().cuda()
-    _model = DelfSEResNet().cuda()
+    _model = DelfSEResNet(d_delf=config.latent_dim).cuda()
+    # _model = teni(_model)
 
     print('metric_fc')
     # Last Layer
-    # _metric_fc = ArcMarginProduct(
-    #    config.latent_dim, n_classes, s=config.S_TEMPERATURE, m=0.5, easy_margin=False).cuda()
-    _metric_fc = nn.Linear(config.latent_dim, n_classes).cuda()
+    _metric_fc = ArcMarginProduct(
+        config.latent_dim, n_classes, s=config.S_TEMPERATURE, m=0.5, easy_margin=False).cuda()
+    # _metric_fc = nn.Linear(config.latent_dim, n_classes).cuda()
     # _metric_fc = DummyLayer().cuda()
 
     print('criterion')
@@ -68,6 +68,16 @@ def init_model(le):
     # _scheduler = optim.lr_scheduler.CosineAnnealingLR(_optimizer, scheduler_step, eta_min=1e-4)
 
     return _model, _metric_fc, _criterion, _optimizer, _scheduler
+
+
+def teni(model):
+    pretrained_model = DelfSEResNet(d_delf=512).cuda()
+    fpath = os.path.join(config.PRETRAIN_PATH, 'best_model.pth')
+    checkpoint = torch.load(fpath)
+    pretrained_model.load_state_dict(checkpoint['state_dict'])
+
+    model.resnet = pretrained_model.resnet
+    return model
 
 
 def train_main():
@@ -149,17 +159,18 @@ def train_main():
     best_score = 0
     # Load model
     if config.USE_PRETRAINED:
-        start_epoch, model, metric_fc, optimizer, scheduler = \
-            load_model(model, metric_fc, optimizer, scheduler)
+        # TODO: back
+        # start_epoch, model, metric_fc, optimizer, scheduler = \
+        #    load_model(model, metric_fc, optimizer, scheduler)
 
         if config.RESET_OPTIM:
             # if reset optimizer, add following code
             start_epoch = 0
-            optimizer = optim.SGD([{'params': model.parameters()}, {'params': metric_fc.parameters()}],
-                                  lr=config.LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
-            # optimizer = optim.Adam([{'params': model.parameters()}, {
-            #     'params': metric_fc.parameters()}], lr=config.LEARNING_RATE)
-            mile_stones = [3, 5, 7, 9, 10, 11, 12]
+            # optimizer = optim.SGD([{'params': model.parameters()}, {'params': metric_fc.parameters()}],
+            #                      lr=config.LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
+            optimizer = optim.Adam([{'params': model.parameters()}, {
+                'params': metric_fc.parameters()}], lr=config.LEARNING_RATE)
+            mile_stones = [5, 7, 9, 10, 11, 12]
             scheduler = optim.lr_scheduler.MultiStepLR(
                 optimizer, mile_stones, gamma=0.5, last_epoch=-1)
 
@@ -203,10 +214,16 @@ def predict_main():
     # Dataset
     if config.RUN_TTA:
         predict_transform = trn_trnsfms
+        test_dataset = LandmarkTTADataset(image_folder=config.TEST_IMG_PATH,
+                                          df=df_test,
+                                          transform=predict_transform,
+                                          mode='predict',
+                                          n_tta=config.N_TTA,
+                                          le=None)
     else:
         predict_transform = tst_trnsfms
-    test_dataset = LandmarkDataset(
-        config.TEST_IMG_PATH, df_test, predict_transform, mode='predict')
+        test_dataset = LandmarkDataset(
+            config.TEST_IMG_PATH, df_test, predict_transform, mode='predict')
     label_encoder = joblib.load(os.path.join(config.PRETRAIN_PATH, 'le.pkl'))
 
     # Initialize model
@@ -254,5 +271,5 @@ def predict_main():
 if __name__ == '__main__':
     create_logger('landmark.log')
 
-    train_main()
-    # predict_main()
+    # train_main()
+    predict_main()

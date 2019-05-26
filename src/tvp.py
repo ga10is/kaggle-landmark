@@ -150,7 +150,6 @@ def make_df(df_org, labels, confidences, le):
 def predict_label2(model, metric_fc, test_dataset, label_encoder):
 
     pred_indices = []
-    pred_scores = []
     pred_confs = []
 
     loader = DataLoader(test_dataset,
@@ -165,37 +164,43 @@ def predict_label2(model, metric_fc, test_dataset, label_encoder):
     model.eval()
     for i, data in enumerate(tqdm(loader)):
         img, _ = data
-        img = img.cuda()
+
         with torch.no_grad():
-            # forward
-            emb_vec = model(img)
-            logit = metric_fc(emb_vec)
+            if not config.RUN_TTA:
+                img = img.cuda()
+                # forward
+                emb_vec = model(img)
+                confs = metric_fc(emb_vec)
+                if not isinstance(metric_fc, ArcMarginProduct):
+                    confs = softmax(confs)
+            else:
+                imgs = img
+                img = imgs[0].cuda()
+                confs = metric_fc(model(img))  # .detach()
+                if not isinstance(metric_fc, ArcMarginProduct):
+                    confs = softmax(confs)
+                sum_confs = confs
+                # print(sum_confs[0, 0:5])
 
-            '''
-            if config.RUN_TTA:
-                # TTA
-                sum_logit = logit.detach()
-                for _ in range(config.N_TTA - 1):
-                    emb_vec = model(img)
-                    logit = metric_fc(emb_vec)
-                    sum_logit = sum_logit + logit
-                logit = sum_logit / N_TTA
-            '''
+                for i in range(1, len(imgs)):
+                    img = imgs[i].cuda()
+                    confs = metric_fc(model(img))
+                    if not isinstance(metric_fc, ArcMarginProduct):
+                        print('softmax')
+                        confs = softmax(confs)
+                    sum_confs += confs  # .detach()
+                    # print(sum_confs[0, 0:5])
+                confs = sum_confs / len(imgs)
+                # print(sum_confs[0, 0:5])
 
-            top_scores, top_indices = torch.topk(logit, k=20)
+            top_confs, top_indices = torch.topk(confs, k=20)
             top_indices = top_indices.detach().cpu().numpy()
-            top_scores = top_scores.detach().cpu().numpy()
-
-            confs = softmax(logit)
-            top_confs, _ = torch.topk(confs, k=20)
             top_confs = top_confs.detach().cpu().numpy()
 
             pred_indices.append(top_indices)
-            pred_scores.append(top_scores)
             pred_confs.append(top_confs)
 
     pred_indices = np.concatenate(pred_indices)
-    pred_scores = np.concatenate(pred_scores)
     pred_confs = np.concatenate(pred_confs)
 
     # make df

@@ -95,7 +95,7 @@ def main(target_dir, resized_dir, processes):
         os.mkdir(os.path.join(target_dir, 'raw_images'))
 
     # indexes = list(range(500))
-    indexes = list(range(1))
+    indexes = list(range(20))
     func = partial(process_tar_file, target_dir=target_dir,
                    resized_dir=resized_dir)
     with Pool(processes) as p:

@@ -259,12 +259,12 @@ class DelfOctaveResnet(nn.Module):
 
 
 class DelfSEResNet(nn.Module):
-    def __init__(self):
+    def __init__(self, d_delf):
         super(DelfSEResNet, self).__init__()
         self.resnet = pretrainedmodels.__dict__['se_resnext50_32x4d'](
             num_classes=1000, pretrained='imagenet')
 
-        d_delf = config.latent_dim
+        # d_delf = config.latent_dim
         self.conv1 = nn.Sequential(
             nn.Conv2d(512, d_delf, 3),
             nn.BatchNorm2d(d_delf)
@@ -307,7 +307,7 @@ class DelfSEResNet(nn.Module):
         xm = F.adaptive_avg_pool2d(x, (1, 1))
         xm = xm.view(xm.size(0), -1)
 
-        x = F.normalize(x1, p=2, dim=1) + F.normalize(x2, p=2,
-                                                      dim=1) + F.normalize(xm, p=2, dim=1)
+        x = F.normalize(x1, p=2, dim=1) + F.normalize(x2, p=2, dim=1) \
+            + F.normalize(xm, p=2, dim=1)
 
         return x

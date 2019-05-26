@@ -37,7 +37,9 @@ class ArcMarginProduct(nn.Module):
         # --------------------------- cos(theta) & phi(theta) ---------------------------
         cosine = F.linear(F.normalize(input), F.normalize(self.weight))
         if label is None:
-            return cosine
+            # output = cosine * self.s
+            output = cosine
+            return output
 
         sine = torch.sqrt(1.0 - torch.pow(cosine, 2))
         phi = cosine * self.cos_m - sine * self.sin_m
