@@ -9,6 +9,7 @@ from .common.util import debug_trace
 from .model.metrics import AverageMeter, accuracy
 from .model.loss import ArcMarginProduct
 from .common.logger import get_logger
+from .common.util import str_stats
 
 
 @debug_trace
@@ -58,8 +59,7 @@ def train(epoch,
         # print
         if i % config.PRINT_FREQ == 0:
             softmaxed = softmax(logit.detach().cpu())
-            get_logger().info(torch.max(softmaxed[0]).item())
-            get_logger().info(softmaxed[0, 0:10])
+            get_logger().info('\n' + str_stats(softmaxed[0].numpy()))
             get_logger().info('train: %d loss: %f top1: %f top5: %f (just now)' %
                               (i, loss_meter.val, top1.val, top5.val))
             get_logger().info('train: %d loss: %f top1: %f top5: %f' %

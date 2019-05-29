@@ -12,7 +12,7 @@ from .common.logger import create_logger, get_logger
 from .preprocessing import get_exist_image, init_le, select_train_data, split_train_valid_v2
 from .common.util import debug_trace
 from .dataset import LandmarkDataset, LandmarkTTADataset
-from .model.model import trn_trnsfms, tst_trnsfms, DelfSEResNet
+from .model.model import trn_trnsfms, tst_trnsfms, DelfSEResNet, GemSEResNet, GemSEResNetV1
 from .model.model_util import save_checkpoint, load_model
 from .model.loss import ArcMarginProduct, FocalLoss
 from .place365 import postprocess
@@ -37,7 +37,8 @@ def init_model(le):
     # _model = DelfResNet().cuda()
     # _model = DelfMoblileNetV2().cuda()
     # _model = DelfOctaveResnet().cuda()
-    _model = DelfSEResNet(d_delf=config.latent_dim).cuda()
+    # _model = DelfSEResNet(d_delf=config.latent_dim).cuda()
+    _model = GemSEResNet(d_delf=config.latent_dim).cuda()
     # _model = teni(_model)
 
     print('metric_fc')
@@ -46,6 +47,7 @@ def init_model(le):
         config.latent_dim, n_classes, s=config.S_TEMPERATURE, m=0.5, easy_margin=False).cuda()
     # _metric_fc = nn.Linear(config.latent_dim, n_classes).cuda()
     # _metric_fc = DummyLayer().cuda()
+    # _metric_fc = teni_metric(_metric_fc)
 
     print('criterion')
     # Loss function
@@ -71,13 +73,26 @@ def init_model(le):
 
 
 def teni(model):
-    pretrained_model = DelfSEResNet(d_delf=512).cuda()
+    print('teni')
+    pretrained_model = GemSEResNetV1(d_delf=config.latent_dim).cuda()
     fpath = os.path.join(config.PRETRAIN_PATH, 'best_model.pth')
     checkpoint = torch.load(fpath)
     pretrained_model.load_state_dict(checkpoint['state_dict'])
+    model.layer0 = pretrained_model.layer0
+    model.layer1 = pretrained_model.layer1
+    model.layer2 = pretrained_model.layer2
+    model.layer3 = pretrained_model.layer3
 
-    model.resnet = pretrained_model.resnet
     return model
+
+
+def teni_metric(metric_fc):
+    print('teni_metric')
+    fpath = os.path.join(config.PRETRAIN_PATH, 'best_model.pth')
+    checkpoint = torch.load(fpath)
+    metric_fc.load_state_dict(checkpoint['metric_fc'])
+
+    return metric_fc
 
 
 def train_main():
@@ -159,9 +174,8 @@ def train_main():
     best_score = 0
     # Load model
     if config.USE_PRETRAINED:
-        # TODO: back
-        # start_epoch, model, metric_fc, optimizer, scheduler = \
-        #    load_model(model, metric_fc, optimizer, scheduler)
+        start_epoch, model, metric_fc, optimizer, scheduler = \
+            load_model(model, metric_fc, optimizer, scheduler)
 
         if config.RESET_OPTIM:
             # if reset optimizer, add following code
@@ -271,5 +285,5 @@ def predict_main():
 if __name__ == '__main__':
     create_logger('landmark.log')
 
-    # train_main()
-    predict_main()
+    train_main()
+    # predict_main()

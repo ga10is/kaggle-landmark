@@ -1,5 +1,6 @@
 import sys
 from sklearn.model_selection import KFold
+import pandas as pd
 
 
 def debug_deco(func):
@@ -32,3 +33,15 @@ def split_train_valid(df, y, n_splits):
     df_valid = df.iloc[idx_valid]
 
     return df_train, df_valid
+
+
+def str_stats(data):
+    """
+    print statistics
+
+    Parameters
+    ----------
+    data: 1-d numpy.ndarray
+    """
+    stats = pd.DataFrame(pd.Series(data).describe()).transpose()
+    return str(stats)
