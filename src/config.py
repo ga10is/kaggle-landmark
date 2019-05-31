@@ -8,8 +8,8 @@ SUBMIT_PATH = INPUT + 'test_stage2.csv'  # 'recognition_sample_submission.csv'
 TRAIN_IMG_PATH = INPUT + 'train_448/'
 TEST_IMG_PATH = INPUT + 'test_stage2_256/'
 INDEX_IMG_PATH = INPUT + 'index/'
-USE_PRETRAINED = False
-PRETRAIN_PATH = './models/delf_seresnet50_finetune_1/'
+USE_PRETRAINED = True
+PRETRAIN_PATH = './models/delf_seresnet50_finetune_4/'
 RESET_OPTIM = True
 
 # config
@@ -18,10 +18,10 @@ BATCH_SIZE_TRAIN = 270
 NUM_WORKERS = 16
 EPOCHS = 12
 PRINT_FREQ = 100
-LEARNING_RATE = 5e-4
+LEARNING_RATE = 1e-4
 latent_dim = 1024
 DROPOUT_RATE = 0.2
-S_TEMPERATURE = 30
+S_TEMPERATURE = 60
 N_SELECT = 5
 N_UNIQUES = 20
 RUN_TTA = True

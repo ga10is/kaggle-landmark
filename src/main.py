@@ -177,17 +177,18 @@ def train_main():
         start_epoch, model, metric_fc, optimizer, scheduler = \
             load_model(model, metric_fc, optimizer, scheduler)
 
-        if config.RESET_OPTIM:
-            # freeze parameter
-            # model.freeze_grad()
+        # freeze parameter
+        if model.stage == 'keypoint':
+            model.freeze_grad()
 
+        if config.RESET_OPTIM:
             # if reset optimizer, add following code
             start_epoch = 0
             # optimizer = optim.SGD([{'params': model.parameters()}, {'params': metric_fc.parameters()}],
             #                      lr=config.LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
             optimizer = optim.Adam([{'params': model.parameters()}, {
                 'params': metric_fc.parameters()}], lr=config.LEARNING_RATE)
-            mile_stones = [3, 5, 7, 9, 10, 11, 12]
+            mile_stones = [3, 5, 7, 9, 11, 12]
             scheduler = optim.lr_scheduler.MultiStepLR(
                 optimizer, mile_stones, gamma=0.5, last_epoch=-1)
 
