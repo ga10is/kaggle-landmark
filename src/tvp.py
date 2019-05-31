@@ -58,7 +58,9 @@ def train(epoch,
 
         # print
         if i % config.PRINT_FREQ == 0:
-            softmaxed = softmax(logit.detach().cpu())
+            logit_cpu = logit.detach().cpu()
+            get_logger().info('\n' + str_stats(logit_cpu[0].numpy()))
+            softmaxed = softmax(logit_cpu)
             get_logger().info('\n' + str_stats(softmaxed[0].numpy()))
             get_logger().info('train: %d loss: %f top1: %f top5: %f (just now)' %
                               (i, loss_meter.val, top1.val, top5.val))

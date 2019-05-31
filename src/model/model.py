@@ -262,9 +262,67 @@ def gem(x, p=3, eps=1e-6):
     return F.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(1. / p)
 
 
-class DelfSEResNet(nn.Module):
+class DelfSEResNetV1(nn.Module):
     def __init__(self, d_delf):
+        super(DelfSEResNetV1, self).__init__()
+        self.resnet = pretrainedmodels.__dict__['se_resnext50_32x4d'](
+            num_classes=1000, pretrained='imagenet')
+
+        # d_delf = config.latent_dim
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(512, d_delf, 3),
+            nn.BatchNorm2d(d_delf)
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(1024, d_delf, 3),
+            nn.BatchNorm2d(d_delf)
+        )
+        self.attn1 = SpatialAttention2d(in_c=d_delf, act_fn='relu')
+        self.attn2 = SpatialAttention2d(in_c=d_delf, act_fn='relu')
+        self.pool = WeightedSum2d()
+
+    def forward(self, x):
+        x = self.resnet.layer0(x)
+        x = self.resnet.layer1(x)
+        x = self.resnet.layer2(x)
+        # print('layer2: %s' % str(x.size()))
+
+        x1 = self.conv1(x)
+        # x1 = F.relu(x1)
+
+        # Attention
+        attn_x1 = F.normalize(x1, p=2, dim=1)
+        attn_score1 = self.attn1(x1)
+        x1 = self.pool([attn_x1, attn_score1])
+        x1 = x1.view(x1.size(0), -1)
+
+        x = self.resnet.layer3(x)
+        x = self.conv2(x)
+        x2 = x
+        # x2 = F.relu(x2)
+
+        # Attention
+        attn_x2 = F.normalize(x2, p=2, dim=1)
+        attn_score2 = self.attn2(x2)
+        x2 = self.pool([attn_x2, attn_score2])
+        x2 = x2.view(x2.size(0), -1)
+
+        # GAP
+        xm = F.adaptive_avg_pool2d(x, (1, 1))
+        xm = xm.view(xm.size(0), -1)
+
+        x = F.normalize(x1, p=2, dim=1) + F.normalize(x2, p=2, dim=1) \
+            + F.normalize(xm, p=2, dim=1)
+
+        return x
+
+
+class DelfSEResNet(nn.Module):
+    def __init__(self, d_delf, stage):
         super(DelfSEResNet, self).__init__()
+
+        self.stage = stage
+
         senet = pretrainedmodels.__dict__['se_resnext50_32x4d'](
             num_classes=1000, pretrained='imagenet')
         self.layer0 = senet.layer0
@@ -285,6 +343,23 @@ class DelfSEResNet(nn.Module):
         self.attn1 = SpatialAttention2d(in_c=d_delf, act_fn='relu')
         self.attn2 = SpatialAttention2d(in_c=d_delf, act_fn='relu')
         self.pool = WeightedSum2d()
+        self.last_layer = nn.Sequential(
+            nn.BatchNorm1d(d_delf),
+            nn.Dropout(config.DROPOUT_RATE),
+            nn.Linear(d_delf, d_delf, bias=True),
+            nn.BatchNorm1d(d_delf)
+        )
+
+    def freeze_grad(self):
+        # freeze
+        for param in self.layer0:
+            param.requires_grad = False
+        for param in self.layer1:
+            param.requires_grad = False
+        for param in self.layer2:
+            param.requires_grad = False
+        for param in self.layer3:
+            param.requires_grad = False
 
     def forward(self, x):
         x = self.layer0(x)
@@ -292,31 +367,33 @@ class DelfSEResNet(nn.Module):
         x = self.layer2(x)
         # print('layer2: %s' % str(x.size()))
 
-        x1 = self.conv1(x)
-
-        # Attention
-        attn_x1 = F.normalize(x1, p=2, dim=1)
-        attn_score1 = self.attn1(x1)
-        x1 = self.pool([attn_x1, attn_score1])
-        x1 = x1.view(x1.size(0), -1)
+        if self.stage == 'keypoint':
+            x1 = self.conv1(x)
+            # Attention
+            attn_x1 = F.normalize(x1, p=2, dim=1)
+            attn_score1 = self.attn1(x1)
+            x1 = self.pool([attn_x1, attn_score1])
+            x1 = x1.view(x1.size(0), -1)
 
         x = self.layer3(x)
-        x = self.conv2(x)
-        x2 = x
 
-        # Attention
-        attn_x2 = F.normalize(x2, p=2, dim=1)
-        attn_score2 = self.attn2(x2)
-        x2 = self.pool([attn_x2, attn_score2])
-        x2 = x2.view(x2.size(0), -1)
+        if self.stage == 'keypoint':
+            x2 = self.conv2(x)
+            # Attention
+            attn_x2 = F.normalize(x2, p=2, dim=1)
+            attn_score2 = self.attn2(x2)
+            x2 = self.pool([attn_x2, attn_score2])
+            x2 = x2.view(x2.size(0), -1)
+            # add
+            x = x1 + x2
 
-        # GAP
-        # xm = F.adaptive_avg_pool2d(x, (1, 1))
-        # xm = gem(x)
-        # xm = xm.view(xm.size(0), -1)
+        if self.stage == 'finetune':
+            # GAP
+            x = F.adaptive_avg_pool2d(x, (1, 1))
+            # x = gem(x)
+            x = x.view(x.size(0), -1)
 
-        x = F.normalize(x1, p=2, dim=1) + F.normalize(x2, p=2, dim=1)
-        # + F.normalize(xm, p=2, dim=1)
+        x = self.last_layer(x)
 
         return x
 

@@ -37,8 +37,8 @@ def init_model(le):
     # _model = DelfResNet().cuda()
     # _model = DelfMoblileNetV2().cuda()
     # _model = DelfOctaveResnet().cuda()
-    # _model = DelfSEResNet(d_delf=config.latent_dim).cuda()
-    _model = GemSEResNet(d_delf=config.latent_dim).cuda()
+    _model = DelfSEResNet(d_delf=config.latent_dim, stage='finetune').cuda()
+    # _model = GemSEResNet(d_delf=config.latent_dim).cuda()
     # _model = teni(_model)
 
     print('metric_fc')
@@ -63,7 +63,7 @@ def init_model(le):
 
     print('scheduler')
     # Scheduler
-    mile_stones = [5, 7, 9, 10, 11, 12]
+    mile_stones = [3, 5, 7, 9, 10, 11, 12]
     _scheduler = optim.lr_scheduler.MultiStepLR(
         _optimizer, mile_stones, gamma=0.5, last_epoch=-1)
     # scheduler_step = EPOCHS
@@ -178,13 +178,16 @@ def train_main():
             load_model(model, metric_fc, optimizer, scheduler)
 
         if config.RESET_OPTIM:
+            # freeze parameter
+            # model.freeze_grad()
+
             # if reset optimizer, add following code
             start_epoch = 0
             # optimizer = optim.SGD([{'params': model.parameters()}, {'params': metric_fc.parameters()}],
             #                      lr=config.LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
             optimizer = optim.Adam([{'params': model.parameters()}, {
                 'params': metric_fc.parameters()}], lr=config.LEARNING_RATE)
-            mile_stones = [5, 7, 9, 10, 11, 12]
+            mile_stones = [3, 5, 7, 9, 10, 11, 12]
             scheduler = optim.lr_scheduler.MultiStepLR(
                 optimizer, mile_stones, gamma=0.5, last_epoch=-1)
 
@@ -264,7 +267,7 @@ def predict_main():
 
     get_logger().info('load sample submit file.')
     df_sub_sample = pd.read_csv(config.SUBMIT_PATH, dtype={'id': 'object'})
-    del df_sub_sample['landmarks']
+    # del df_sub_sample['landmarks']
     print(df_sub_sample.head())
 
     get_logger().info('merge df_sub_sample and df_sub')
