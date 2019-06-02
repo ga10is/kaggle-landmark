@@ -40,6 +40,9 @@ def init_model(le):
     _model = DelfSEResNet(d_delf=config.latent_dim, stage='finetune').cuda()
     # _model = GemSEResNet(d_delf=config.latent_dim).cuda()
     # _model = teni(_model)
+    if torch.cuda.device_count() > 1:
+        get_logger().info('multi gpu model')
+        _model = nn.DataParallel(_model)
 
     print('metric_fc')
     # Last Layer
@@ -48,6 +51,9 @@ def init_model(le):
     # _metric_fc = nn.Linear(config.latent_dim, n_classes).cuda()
     # _metric_fc = DummyLayer().cuda()
     # _metric_fc = teni_metric(_metric_fc)
+    if torch.cuda.device_count() > 1:
+        get_logger().info('multi gpu metric_fc')
+        _metric_fc = nn.DataParallel(_metric_fc)
 
     print('criterion')
     # Loss function
@@ -74,14 +80,10 @@ def init_model(le):
 
 def teni(model):
     print('teni')
-    pretrained_model = GemSEResNetV1(d_delf=config.latent_dim).cuda()
+    # _model = DelfSEResNet(d_delf=config.latent_dim, stage='finetune').cuda()
     fpath = os.path.join(config.PRETRAIN_PATH, 'best_model.pth')
     checkpoint = torch.load(fpath)
-    pretrained_model.load_state_dict(checkpoint['state_dict'])
-    model.layer0 = pretrained_model.layer0
-    model.layer1 = pretrained_model.layer1
-    model.layer2 = pretrained_model.layer2
-    model.layer3 = pretrained_model.layer3
+    model.load_state_dict(checkpoint['state_dict'])
 
     return model
 
@@ -179,6 +181,7 @@ def train_main():
 
         # freeze parameter
         if model.stage == 'keypoint':
+            get_logger().info('freeze grad')
             model.freeze_grad()
 
         if config.RESET_OPTIM:
@@ -289,5 +292,5 @@ def predict_main():
 if __name__ == '__main__':
     create_logger('landmark.log')
 
-    train_main()
-    # predict_main()
+    # train_main()
+    predict_main()

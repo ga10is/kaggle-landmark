@@ -343,6 +343,7 @@ class DelfSEResNet(nn.Module):
         self.attn1 = SpatialAttention2d(in_c=d_delf, act_fn='relu')
         self.attn2 = SpatialAttention2d(in_c=d_delf, act_fn='relu')
         self.pool = WeightedSum2d()
+
         self.last_layer = nn.Sequential(
             nn.BatchNorm1d(d_delf),
             nn.Dropout(config.DROPOUT_RATE),
@@ -352,13 +353,13 @@ class DelfSEResNet(nn.Module):
 
     def freeze_grad(self):
         # freeze
-        for param in self.layer0:
+        for param in self.layer0.parameters():
             param.requires_grad = False
-        for param in self.layer1:
+        for param in self.layer1.parameters():
             param.requires_grad = False
-        for param in self.layer2:
+        for param in self.layer2.parameters():
             param.requires_grad = False
-        for param in self.layer3:
+        for param in self.layer3.parameters():
             param.requires_grad = False
 
     def forward(self, x):
@@ -368,12 +369,15 @@ class DelfSEResNet(nn.Module):
         # print('layer2: %s' % str(x.size()))
 
         if self.stage == 'keypoint':
+            pass
+            '''
             x1 = self.conv1(x)
             # Attention
             attn_x1 = F.normalize(x1, p=2, dim=1)
             attn_score1 = self.attn1(x1)
             x1 = self.pool([attn_x1, attn_score1])
             x1 = x1.view(x1.size(0), -1)
+            '''
 
         x = self.layer3(x)
 
@@ -385,7 +389,7 @@ class DelfSEResNet(nn.Module):
             x2 = self.pool([attn_x2, attn_score2])
             x2 = x2.view(x2.size(0), -1)
             # add
-            x = x1 + x2
+            x = x2
 
         if self.stage == 'finetune':
             # GAP

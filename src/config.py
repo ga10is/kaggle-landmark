@@ -9,21 +9,21 @@ TRAIN_IMG_PATH = INPUT + 'train_448/'
 TEST_IMG_PATH = INPUT + 'test_stage2_256/'
 INDEX_IMG_PATH = INPUT + 'index/'
 USE_PRETRAINED = True
-PRETRAIN_PATH = './models/delf_seresnet50_finetune_4/'
-RESET_OPTIM = True
+PRETRAIN_PATH = './models/delf_seresnet50_finetune_7/'
+RESET_OPTIM = False
 
 # config
 MODEL = 'delf_seresnet50_finetune'
-BATCH_SIZE_TRAIN = 270
+BATCH_SIZE_TRAIN = 200
 NUM_WORKERS = 16
 EPOCHS = 12
 PRINT_FREQ = 100
 LEARNING_RATE = 1e-4
 latent_dim = 1024
 DROPOUT_RATE = 0.2
-S_TEMPERATURE = 60
+S_TEMPERATURE = 200
 N_SELECT = 5
-N_UNIQUES = 20
+N_UNIQUES = 6
 RUN_TTA = True
 N_TTA = 4
 
