@@ -12,7 +12,7 @@ from .common.logger import create_logger, get_logger
 from .preprocessing import get_exist_image, init_le, select_train_data, split_train_valid_v2
 from .common.util import debug_trace
 from .dataset import LandmarkDataset, LandmarkTTADataset
-from .model.model import trn_trnsfms, tst_trnsfms, DelfSEResNet, GemSEResNet, GemSEResNetV1
+from .model.model import trn_trnsfms, tst_trnsfms, DelfSEResNet
 from .model.model_util import save_checkpoint, load_model
 from .model.loss import ArcMarginProduct, FocalLoss
 from .place365 import postprocess
@@ -24,36 +24,21 @@ def init_model(le):
 
     print('model')
     n_classes = len(le.classes_)
-    # Model
-    # _model = DenseNet(output_neurons=config.latent_dim,
-    #                 n_classes=n_classes, dropout_rate=config.DROPOUT_RATE).cuda()
-    # _model = ResNet(output_neurons=config.latent_dim,
-    #                 n_classes=n_classes, dropout_rate=config.DROPOUT_RATE).cuda()
-    # _model = Delf_V1(ncls=n_classes,
-    #                 arch='resnet34',
-    #                 stage='finetune',
-    #                 target_layer='layer3'
-    #                 ).cuda()
-    # _model = DelfResNet().cuda()
-    # _model = DelfMoblileNetV2().cuda()
-    # _model = DelfOctaveResnet().cuda()
-    _model = DelfSEResNet(d_delf=config.latent_dim, stage='finetune').cuda()
-    # _model = GemSEResNet(d_delf=config.latent_dim).cuda()
-    # _model = teni(_model)
+    _model = DelfSEResNet(d_delf=config.latent_dim, stage='finetune')
     if torch.cuda.device_count() > 1:
         get_logger().info('multi gpu model')
         _model = nn.DataParallel(_model)
+    _model = _model.cuda()
 
     print('metric_fc')
     # Last Layer
     _metric_fc = ArcMarginProduct(
-        config.latent_dim, n_classes, s=config.S_TEMPERATURE, m=0.5, easy_margin=False).cuda()
+        config.latent_dim, n_classes, s=config.S_TEMPERATURE, m=0.5, easy_margin=False)
     # _metric_fc = nn.Linear(config.latent_dim, n_classes).cuda()
-    # _metric_fc = DummyLayer().cuda()
-    # _metric_fc = teni_metric(_metric_fc)
     if torch.cuda.device_count() > 1:
         get_logger().info('multi gpu metric_fc')
         _metric_fc = nn.DataParallel(_metric_fc)
+    _metric_fc = _metric_fc.cuda()
 
     print('criterion')
     # Loss function
@@ -69,32 +54,13 @@ def init_model(le):
 
     print('scheduler')
     # Scheduler
-    mile_stones = [3, 5, 7, 9, 10, 11, 12]
+    mile_stones = [4, 7, 9, 11, 13]
     _scheduler = optim.lr_scheduler.MultiStepLR(
         _optimizer, mile_stones, gamma=0.5, last_epoch=-1)
     # scheduler_step = EPOCHS
     # _scheduler = optim.lr_scheduler.CosineAnnealingLR(_optimizer, scheduler_step, eta_min=1e-4)
 
     return _model, _metric_fc, _criterion, _optimizer, _scheduler
-
-
-def teni(model):
-    print('teni')
-    # _model = DelfSEResNet(d_delf=config.latent_dim, stage='finetune').cuda()
-    fpath = os.path.join(config.PRETRAIN_PATH, 'best_model.pth')
-    checkpoint = torch.load(fpath)
-    model.load_state_dict(checkpoint['state_dict'])
-
-    return model
-
-
-def teni_metric(metric_fc):
-    print('teni_metric')
-    fpath = os.path.join(config.PRETRAIN_PATH, 'best_model.pth')
-    checkpoint = torch.load(fpath)
-    metric_fc.load_state_dict(checkpoint['metric_fc'])
-
-    return metric_fc
 
 
 def train_main():
@@ -191,7 +157,7 @@ def train_main():
             #                      lr=config.LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
             optimizer = optim.Adam([{'params': model.parameters()}, {
                 'params': metric_fc.parameters()}], lr=config.LEARNING_RATE)
-            mile_stones = [3, 5, 7, 9, 11, 12]
+            mile_stones = [3, 5, 7, 9, 11]
             scheduler = optim.lr_scheduler.MultiStepLR(
                 optimizer, mile_stones, gamma=0.5, last_epoch=-1)
 
@@ -204,6 +170,8 @@ def train_main():
         valid_score = tvp.validate_arcface(model, metric_fc, valid_loader)
 
         is_best = valid_score > best_score
+        if is_best:
+            best_score = valid_score
         get_logger().info('best score (%f) at epoch (%d)' % (valid_score, epoch))
         save_checkpoint({
             'epoch': epoch,
@@ -257,7 +225,7 @@ def predict_main():
     get_logger().info('prediction with a model of epoch: %d' % start_epoch)
 
     # Predict
-    tvp.predict_label2(model, metric_fc, test_dataset, label_encoder)
+    tvp.predict_label(model, metric_fc, test_dataset, label_encoder)
 
     # load outputed file(submit_landmark.csv)
     get_logger().info('load outputed csv file.')
@@ -266,7 +234,6 @@ def predict_main():
     get_logger().info('Shape of predicted csv: %s' % str(df_sub.shape))
 
     df_sub = postprocess.remove_non_landmark(df_sub)
-    # TODO: remove
     df_sub.to_csv('tmp_submit.csv')
 
     get_logger().info('load sample submit file.')
@@ -292,5 +259,6 @@ def predict_main():
 if __name__ == '__main__':
     create_logger('landmark.log')
 
+    # TODO: arguments
     # train_main()
     predict_main()

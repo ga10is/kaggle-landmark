@@ -19,6 +19,21 @@ def train(epoch,
           metric_fc,
           criterion,
           optimizer):
+    """
+    1 epoch training
+
+    Parameters
+    ----------
+    epoch: int
+        epoch of the train
+    model: nn.Module
+    loader: DataLoader
+    metric_fc: nn.Module
+        layer before loss function
+    criterion: nn.Module
+        loss function
+    optimizer: Optimizer
+    """
     loss_meter = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
@@ -33,8 +48,6 @@ def train(epoch,
     for i, data in enumerate(tqdm(loader)):
         img, label = data
         img, label = img.cuda(), label.cuda().long()
-        # label = label.squeeze() # (batch_size, 1) -> (batch_size,)
-        # optimizer.zero_grad()
         with torch.set_grad_enabled(True):
             # forward
             emb_vec = model(img)
@@ -75,6 +88,15 @@ def train(epoch,
 def validate_arcface(model,
                      metric_fc,
                      loader):
+    """
+    validation
+
+    Parameters
+    ----------
+    model: nn.Module
+    metric_fc: nn.Module
+    loader: DataLoader
+    """
     top1 = AverageMeter()
     top5 = AverageMeter()
 
@@ -99,16 +121,6 @@ def validate_arcface(model,
                               (i, top1.val, top5.val))
             get_logger().info('valid: %d top1: %f top5: %f' %
                               (i, top1.avg, top5.avg))
-
-        '''
-        # calculate accuracy
-        max_proba = np.max(proba, axis=1)
-        max_proba_idx = np.argmax(proba, axis=1)
-        acc = accuracy_score(label, max_proba_idx)
-        # calculate GAP
-        gap = GAP_vector(max_proba_idx, max_proba, label.squeeze())
-        get_logger().info("validate score: acc %f gap %f" % (acc, gap))
-        '''
 
     get_logger().info("valid top1 %f top5 %f" % (top1.avg, top5.avg))
 
@@ -149,8 +161,17 @@ def make_df(df_org, labels, confidences, le):
     return new_df
 
 
-def predict_label2(model, metric_fc, test_dataset, label_encoder):
+def predict_label(model, metric_fc, test_dataset, label_encoder):
+    """
+    prediction
 
+    Paramters
+    ---------
+    model: nn.Module
+    metric_fc: nn.Module
+    test_dataset: Dataset
+    label_encoder: LabelEncoder
+    """
     pred_indices = []
     pred_confs = []
 
@@ -174,26 +195,26 @@ def predict_label2(model, metric_fc, test_dataset, label_encoder):
                 emb_vec = model(img)
                 confs = metric_fc(emb_vec)
                 if not isinstance(metric_fc, ArcMarginProduct):
+                    # Calculate confidences by softmax if loss is not ArcFace.
+                    # Use cosine similarity as confidences if loss is ArcFace.
+                    # The similarity is computed by ArcMarginProduct.
                     confs = softmax(confs)
             else:
+                # When TTA, DataLoader returns list of torch.Tensor
                 imgs = img
                 img = imgs[0].cuda()
-                confs = metric_fc(model(img))  # .detach()
+                confs = metric_fc(model(img))
                 if not isinstance(metric_fc, ArcMarginProduct):
                     confs = softmax(confs)
                 sum_confs = confs
-                # print(sum_confs[0, 0:5])
 
                 for i in range(1, len(imgs)):
                     img = imgs[i].cuda()
                     confs = metric_fc(model(img))
                     if not isinstance(metric_fc, ArcMarginProduct):
-                        print('softmax')
                         confs = softmax(confs)
-                    sum_confs += confs  # .detach()
-                    # print(sum_confs[0, 0:5])
+                    sum_confs += confs
                 confs = sum_confs / len(imgs)
-                # print(sum_confs[0, 0:5])
 
             top_confs, top_indices = torch.topk(confs, k=20)
             top_indices = top_indices.detach().cpu().numpy()
@@ -206,7 +227,6 @@ def predict_label2(model, metric_fc, test_dataset, label_encoder):
     pred_confs = np.concatenate(pred_confs)
 
     # make df
-    # labels = label_encoder.inverse_transform(pred_indices[:, 0])
     df_submit = make_df(loader.dataset._df, pred_indices,
                         pred_confs, label_encoder)
 

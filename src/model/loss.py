@@ -8,6 +8,8 @@ import torch
 
 
 class ArcMarginProduct(nn.Module):
+    # source from https://github.com/ronghuaiyang/arcface-pytorch
+    # Thank you, ronghuaiyang
     r"""Implement of large margin arc distance: :
         Args:
             in_features: size of each input sample

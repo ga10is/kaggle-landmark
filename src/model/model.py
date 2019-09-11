@@ -9,18 +9,6 @@ from .. import config
 from ..delf.layers import SpatialAttention2d, WeightedSum2d
 from .mobilev2 import MobileNetV2, InvertedResidual
 from .octave import oct_resnet
-# import matplotlib.pyplot as plt
-# import numpy as np
-
-
-"""
-def imshow(img):
-    # print(type(img))
-    img = img * 0.23 + 0.5     # unnormalize
-    npimg = img.numpy()
-    # print(npimg.shape)
-    plt.imshow(np.transpose(npimg, (1, 2, 0)))
-"""
 
 
 trn_trnsfms = transforms.Compose([
@@ -139,7 +127,11 @@ class DelfResNet(nn.Module):
 
 def pool_attn(attn):
     """
-    pooling attention score to 1/2
+    pooling attention size to 1/2.
+
+    Parameters
+    ----------
+    attn: torch.Tensor of shape [N, C, W, H]
     """
     assert (attn.size(2) % 2 == 0) and (attn.size(3) % 2 == 0)
     weight = torch.ones(1, 1, 2, 2).cuda()
@@ -149,6 +141,10 @@ def pool_attn(attn):
 
 
 class DelfMoblileNetV2(nn.Module):
+    """
+    Based on MobileNetV2 and add Attention layer, but don't work
+    """
+
     def __init__(self):
         super(DelfMoblileNetV2, self).__init__()
         self.features = MobileNetV2(
@@ -221,104 +217,30 @@ class DelfMoblileNetV2(nn.Module):
         return x
 
 
-class DelfOctaveResnet(nn.Module):
-    def __init__(self):
-        super(DelfOctaveResnet, self).__init__()
-        self.resnet = oct_resnet.resnet50(num_classes=1)
-
-        d_delf = config.latent_dim
-        # d_half = round(d_delf / 2)
-
-        self.conv = nn.Conv2d(2048, d_delf, kernel_size=(3, 3))
-        self.bn = nn.BatchNorm2d(d_delf)
-
-        self.attn = SpatialAttention2d(in_c=d_delf, act_fn='relu')
-        self.pool = WeightedSum2d()
-
-    def forward(self, x):
-        x = self.resnet.conv1(x)
-        x = self.resnet.bn1(x)
-        x = self.resnet.relu(x)
-        x = self.resnet.maxpool(x)
-
-        x_h, x_l = self.resnet.layer1(x)
-        x_h, x_l = self.resnet.layer2((x_h, x_l))
-        x_h, x_l = self.resnet.layer3((x_h, x_l))
-        x_h = self.resnet.layer4((x_h, x_l))
-
-        x = self.conv(x)
-        x = self.bn(x)
-        x = F.relu(x)
-
-        attn_x = F.normalize(x, p=2, dim=1)
-        attn_score = self.attn(x)
-        x = self.pool([attn_x, attn_score])
-        x = x.view(x.size(0), -1)
-
-        return x
-
-
+# source from https://github.com/filipradenovic/cnnimageretrieval-pytorch
+# Thanks you, Filip.
 def gem(x, p=3, eps=1e-6):
     return F.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(1. / p)
 
 
-class DelfSEResNetV1(nn.Module):
-    def __init__(self, d_delf):
-        super(DelfSEResNetV1, self).__init__()
-        self.resnet = pretrainedmodels.__dict__['se_resnext50_32x4d'](
-            num_classes=1000, pretrained='imagenet')
-
-        # d_delf = config.latent_dim
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(512, d_delf, 3),
-            nn.BatchNorm2d(d_delf)
-        )
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(1024, d_delf, 3),
-            nn.BatchNorm2d(d_delf)
-        )
-        self.attn1 = SpatialAttention2d(in_c=d_delf, act_fn='relu')
-        self.attn2 = SpatialAttention2d(in_c=d_delf, act_fn='relu')
-        self.pool = WeightedSum2d()
-
-    def forward(self, x):
-        x = self.resnet.layer0(x)
-        x = self.resnet.layer1(x)
-        x = self.resnet.layer2(x)
-        # print('layer2: %s' % str(x.size()))
-
-        x1 = self.conv1(x)
-        # x1 = F.relu(x1)
-
-        # Attention
-        attn_x1 = F.normalize(x1, p=2, dim=1)
-        attn_score1 = self.attn1(x1)
-        x1 = self.pool([attn_x1, attn_score1])
-        x1 = x1.view(x1.size(0), -1)
-
-        x = self.resnet.layer3(x)
-        x = self.conv2(x)
-        x2 = x
-        # x2 = F.relu(x2)
-
-        # Attention
-        attn_x2 = F.normalize(x2, p=2, dim=1)
-        attn_score2 = self.attn2(x2)
-        x2 = self.pool([attn_x2, attn_score2])
-        x2 = x2.view(x2.size(0), -1)
-
-        # GAP
-        xm = F.adaptive_avg_pool2d(x, (1, 1))
-        xm = xm.view(xm.size(0), -1)
-
-        x = F.normalize(x1, p=2, dim=1) + F.normalize(x2, p=2, dim=1) \
-            + F.normalize(xm, p=2, dim=1)
-
-        return x
-
-
 class DelfSEResNet(nn.Module):
+    """
+    Model Architecture: SE-ResNeXt50->GeM->BN->Dropout->FC->BN
+    """
+
     def __init__(self, d_delf, stage):
+        """
+        initialize instance.
+
+        Parameters
+        ----------
+        d_delf: int
+            output dimension.
+        stage: str
+            'finetune' or 'keypoint'.
+            If 'finetune', the last layer is GeM.
+            If 'keypoint', the output is sum of weighted feature map vectors by Attention layer.
+        """
         super(DelfSEResNet, self).__init__()
 
         self.stage = stage
@@ -369,15 +291,12 @@ class DelfSEResNet(nn.Module):
         # print('layer2: %s' % str(x.size()))
 
         if self.stage == 'keypoint':
-            pass
-            '''
             x1 = self.conv1(x)
             # Attention
             attn_x1 = F.normalize(x1, p=2, dim=1)
             attn_score1 = self.attn1(x1)
             x1 = self.pool([attn_x1, attn_score1])
             x1 = x1.view(x1.size(0), -1)
-            '''
 
         x = self.layer3(x)
 
@@ -392,9 +311,9 @@ class DelfSEResNet(nn.Module):
             x = x2
 
         if self.stage == 'finetune':
-            # GAP
-            x = F.adaptive_avg_pool2d(x, (1, 1))
-            # x = gem(x)
+            # GAP or GeM
+            # x = F.adaptive_avg_pool2d(x, (1, 1))
+            x = gem(x)
             x = x.view(x.size(0), -1)
 
         x = self.last_layer(x)
@@ -403,7 +322,19 @@ class DelfSEResNet(nn.Module):
 
 
 class GemSEResNet(nn.Module):
+    """
+    Model Architecture: SE-ResNeXt50->GeM->FC
+    """
+
     def __init__(self, d_delf):
+        """
+        initialize instance.
+
+        Parameters
+        ----------
+        d_delf: int
+            output dimension.
+        """
         super(GemSEResNet, self).__init__()
         senet = pretrainedmodels.__dict__['se_resnext50_32x4d'](
             num_classes=1000, pretrained='imagenet')
@@ -424,28 +355,5 @@ class GemSEResNet(nn.Module):
         x = x.view(x.size(0), -1)
 
         x = self.whiten(x)
-
-        return x
-
-
-class GemSEResNetV1(nn.Module):
-    def __init__(self, d_delf):
-        super(GemSEResNetV1, self).__init__()
-        senet = pretrainedmodels.__dict__['se_resnext50_32x4d'](
-            num_classes=1000, pretrained='imagenet')
-        self.layer0 = senet.layer0
-        self.layer1 = senet.layer1
-        self.layer2 = senet.layer2
-        self.layer3 = senet.layer3
-
-    def forward(self, x):
-        x = self.layer0(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)  # channel=1024
-
-        # GeM
-        x = gem(x)
-        x = x.view(x.size(0), -1)
 
         return x
